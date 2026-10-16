@@ -331,7 +331,7 @@ export default {
     serviceName: '服务名',
     schema: 'Schema',
     obSchemaPlaceholder: 'Schema（留空则默认 = 用户名）',
-    obOracleUsername: "user{'@'}tenant（如 cs_platform{'@'}cscioracle）",
+    obOracleUsername: "user{'@'}tenant（如 myuser{'@'}mytenant）",
     passwordStored: '已保存到系统凭据，留空保持不变',
     jdbcDriver: '驱动',
     jdbcDriverPlaceholder: '选择 JDBC 驱动（工具 → 驱动管理 配置）',

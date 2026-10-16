@@ -61,7 +61,7 @@ npm run bundle:nsis  # 打包 NSIS 安装器（需 NSIS 工具缓存）
 - **Oracle**：`oracle-bridge`（`src-tauri/oracle-bridge/`，纯 Go 的 [go-ora](https://github.com/sijms/go-ora)）→ 无需 Oracle Instant Client
 - **OceanBase Oracle 模式**：`jdbc-bridge`（`src-tauri/jdbc-bridge/`，Java + OceanBase Connector/J）→ 需 **JRE 21+**（经 JAVA_HOME/PATH 定位 java）
   - OceanBase 的 Oracle 模式实际是 **MySQL 协议 + OB 扩展能力位**，标准 Oracle TNS 客户端（含 go-ora）无法连接，故使用官方 JDBC 驱动
-  - 连接要点：用户名填 **`用户@租户`**（如 `cs_platform@cscioracle`），**Schema 留空**（Oracle 模式 schema 默认 = 用户名）
+  - 连接要点：用户名填 **`用户@租户`**（如 `myuser@mytenant`），**Schema 留空**（Oracle 模式 schema 默认 = 用户名）
 
 连接表单中的「连接方式」可选：
 

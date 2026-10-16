@@ -82,7 +82,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - **执行状态**：查询执行使用 `runSeq` 请求序列号，过期响应必须丢弃；停止按钮通过自增 runSeq 作废挂起请求（不得直接依赖 Promise 返回复位状态）
 - 数据库类型枚举 `DbKind` 在 `src-tauri/src/db/types.rs` 与 `src/types/db.ts` 双端维护，新增数据库需同步修改并实现 trait 后在 `pool.rs` 的 `create_driver` 注册
 - Oracle **默认走内置 go-ora 驱动**（`oracle-bridge`，纯 Go，免装 OCI）；OceanBase Oracle **默认走内置 JDBC 驱动**（`jdbc-bridge`，OceanBase Connector/J，**需 JRE 21+**，经 JAVA_HOME/PATH 定位 java）。构建时 `build.rs` 分别调 Go 工具链编译 `src-tauri/oracle-bridge/`、调 Maven 打包 `src-tauri/jdbc-bridge/` 到 `src-tauri/binaries/`，经 `tauri.conf.json#bundle.resources` 打包；**缺 Go/Maven 则跳过并告警，运行时回退 OCI**。连接方式由 `params.driver` 选择（缺省内置 / `oci` 走 `oracle.rs`）。产物不入库（`.gitignore` 忽略 `binaries/*.exe`、`jdbc-bridge/target/`）。OCI 路径（`oracle.rs`）依赖 OCI 客户端库，**默认特性已启用**（ODPI-C 运行时动态加载，编译期不依赖 OCI）；所有 OCI 相关代码位于 `#[cfg(feature = "oracle")]`，`--no-default-features` 可排除（此时仍可用内置驱动）
-- **OceanBase Oracle 连接要点**：用户名须为 `用户@租户`（如 `cs_platform@cscioracle`）；**Schema（库名）必须留空**（Oracle 模式 schema 默认 = 用户名，填租户名会报 `Unknown database`）；端口直连 OBServer 2881 或 OBProxy 2883 均可
+- **OceanBase Oracle 连接要点**：用户名须为 `用户@租户`（如 `myuser@mytenant`）；**Schema（库名）必须留空**（Oracle 模式 schema 默认 = 用户名，填租户名会报 `Unknown database`）；端口直连 OBServer 2881 或 OBProxy 2883 均可
 - Rust 侧禁止阻塞 runtime：Oracle 同步驱动必须用 `tokio::task::spawn_blocking` 包装
 - 结果集必须支持 `max_rows` 截断（MySQL 用 `QueryResult::next`、PG 用 `TryStreamExt::try_next` 惰性拉取）
 - 前后端字段命名：Rust 结构体一律 `#[serde(rename_all = "camelCase")]`，TS 端不使用 snake_case

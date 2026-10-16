@@ -119,9 +119,9 @@ fn base_dir() -> PathBuf {
     }
 }
 
-/// %LOCALAPPDATA%/com.qiuyj.personaldb/{sub}（回退与旧数据迁移源）
+/// %LOCALAPPDATA%/com.smoothwind.personaldb/{sub}（回退与旧数据迁移源）
 fn legacy_app_data(sub: &str) -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("com.qiuyj.personaldb").join(sub))
+    dirs::data_local_dir().map(|d| d.join("com.smoothwind.personaldb").join(sub))
 }
 
 fn dir_writable(dir: &Path) -> bool {

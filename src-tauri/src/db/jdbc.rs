@@ -348,7 +348,7 @@ mod tests {
             kind: crate::db::types::DbKind::Jdbc,
             host,
             port: Some(2881),
-            username: "cs_platform@cscioracle".into(),
+            username: "myuser@mytenant".into(),
             password,
             password_ref: None,
             database: None,

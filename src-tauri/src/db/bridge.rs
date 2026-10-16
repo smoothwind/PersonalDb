@@ -348,7 +348,7 @@ mod tests {
         let r = b
             .call(serde_json::json!({
                 "cmd": "connect", "host": host, "port": 2881,
-                "service": "", "user": "cs_platform@cscioracle", "password": password
+                "service": "", "user": "myuser@mytenant", "password": password
             }))
             .await;
         eprintln!("connect result: {r:?}");

@@ -331,7 +331,7 @@ export default {
     serviceName: 'Service Name',
     schema: 'Schema',
     obSchemaPlaceholder: 'Schema (leave blank to default to username)',
-    obOracleUsername: "user{'@'}tenant (e.g. cs_platform{'@'}cscioracle)",
+    obOracleUsername: "user{'@'}tenant (e.g. myuser{'@'}mytenant)",
     passwordStored: 'Stored in OS credential manager, leave blank to keep',
     jdbcDriver: 'Driver',
     jdbcDriverPlaceholder: 'Select JDBC driver (Tools → Driver Manager)',
