@@ -18,7 +18,7 @@ cargo check --no-default-features  # 排除 oracle 的路径检查（改动 cfg 
 cargo fix --lib --allow-dirty      # 自动修复 warning
 ```
 
-构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。CI（`.github/workflows/ci.yml`）为 `check` + `bundle` 两个作业：push（main/master、`v*` 标签）与 PR 均触发；`bundle` 在 windows-latest 上经 Go/Maven 产出 MSI + NSIS 并上传 Artifact，`v*` 标签附到草稿 Release。
+构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。CI（`.github/workflows/ci.yml`）为 `check` + `bundle` 两个作业：push（main/master、`v*` 标签）与 PR 均触发；`bundle` 在 windows-latest 上经 Go/Maven 产出 MSI + NSIS 并上传 Artifact，`v*` 标签改由 `tauri-apps/tauri-action@v1` 构建+签名并生成 `latest.json` 附到草稿 Release（需 Secrets，见 SPEC-DEV-2）。
 
 ## 架构
 
@@ -50,7 +50,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - 多结果集约定：非 Oracle 连接 `splitStatements` 分割后逐条执行（`runMultiStatements`），`tab.multiResults/activeResultIndex` + segmented 切换；Oracle 含 PL/SQL 块跳过分割
 - 编辑撤销约定：`editUndoStack/editRedoStack` 全量快照（上限 50），五类变更入口均需 `pushEditUndo()`；Ctrl+Z/Ctrl+Y 经 `onEditKeydown`（编辑态且非单元格输入中）
 - 历史存储约定：SQLite（`history.rs`，存储类别 History/`history.db`，上限 500，WAL）；`stores/history.ts` 后端化（旧 localStorage 首次迁移），`push` 乐观插入
-- 更新约定：updater/process 插件已接入但**未启用端点**（启用步骤见 SPEC-DEV-2）；签名密钥 `%USERPROFILE%\.personaldb\tauri-updater.key`（口令 personaldb），启用前打包不受影响
+- 更新约定：`stores/update.ts` 统一检测（仅打包版：启动延迟 5s **静默检测** → 状态栏/帮助菜单**非模态提示**，可「不再提示此版本」；开关与跳过版本存 `personaldb.update`）；手动入口=帮助菜单「检查更新」/首选项「自动更新」；未配置端点/公钥归类为「未启用」不打扰；端点、公钥、Secrets 与发布链路（tauri-action + latest.json）见 SPEC-DEV-2
 - 日志约定：后端 `tauri-plugin-log`（stdout + `logs/personaldb.log` 自动轮转 + WebView 控制台；debug 构建 Debug 级、release Info 级）；`AppError` 实现 Drop 日志（未处理错误零侵入落盘；**可预期的服务端拒绝/配置类错误降级为 WARN**，如 OB Oracle 租户 1235、认证失败、对象不存在）；panic hook 记录崩溃。前端 `utils/logger.ts`（attachConsole 转发 + 全局 error/unhandledrejection/Vue errorHandler），关键业务点（连接/SQL 执行/导出失败）调用 `logger`。**日志禁止打印密码**；SQL 仅记录前 200 字符且失败时才落盘完整前缀
 - 快捷键约定：动作定义与组合工具在 `utils/shortcuts.ts`（global/editor 两种 scope）；绑定存 `preferences.shortcuts`（可覆盖默认、实时生效）；global 动作由 App 的 keydown 监听（输入框/CM6 聚焦时不拦截），editor 动作由 SqlEditor 的 keymap compartment 动态生成
 - **Windows 拖拽约定（重要）**：主窗 `tauri.conf.json#windows[main].dragDropEnabled=false`——Tauri 原生拖放会**吞掉 WebView2 的 HTML5 dragover/drop**（表现为「禁止光标」且 `allow-drop` 永不触发）；禁用后 HTML5 拖拽可用，**文件拖入一律走 HTML5**（`text/uri-list` 解析本地路径，参见 `DriverManager#onFileDrop`），不再使用 `getCurrentWebview().onDragDropEvent`
@@ -77,7 +77,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 
 - **功能规约（必读）**：`docs/specifications.md` 为长期维护的功能规约（UI/编辑器/结果集/浏览器/首选项/国际化），修改相关功能前先阅读对应条目，实现变更后同步修订
 - **国际化（必须遵守）**：所有 UI 文案必须走 vue-i18n，语言包在 `src/i18n/locales/zh-CN.ts` 与 `en.ts` **双端同步维护**，新增任何界面文字需同时补充两种语言；组件内用 `useI18n().t()`，非组件（store/工具）用 `i18n.global.t`；内置数据（如 snippetDefaults 的 description）存 i18n key 而非中文原文；**文案中的 `@` 必须写成 `{'@'}`**（否则被 vue-i18n 当作 linked message 语法导致模板编译崩溃，如 OB 用户名 `user{'@'}tenant`）
-- **用户偏好**：语言/主题/编辑器样式/源码查看器/数据格式/结果集展示/界面字体/导出默认项/SQL 美化等统一放 `stores/preferences.ts`（localStorage 持久化：`personaldb.locale`/`personaldb.theme`/`personaldb.editor`/`personaldb.viewer`/`personaldb.dataformat`/`personaldb.result`/`personaldb.ui`/`personaldb.export`/`personaldb.format`），**改动即时生效**（组件通过响应式偏好热更新）；首选项对话框（两栏式）内提供源码查看器与数据格式实时预览；Element Plus 组件文案由 App.vue 的 `el-config-provider` 动态绑定
+- **用户偏好**：语言/主题/编辑器样式/源码查看器/数据格式/结果集展示/界面字体/导出默认项/SQL 美化等统一放 `stores/preferences.ts`（localStorage 持久化：`personaldb.locale`/`personaldb.theme`/`personaldb.editor`/`personaldb.viewer`/`personaldb.dataformat`/`personaldb.result`/`personaldb.ui`/`personaldb.export`/`personaldb.format`/`personaldb.update`），**改动即时生效**（组件通过响应式偏好热更新）；首选项对话框（两栏式）内提供源码查看器与数据格式实时预览；Element Plus 组件文案由 App.vue 的 `el-config-provider` 动态绑定
 - **SQL 编辑器**：使用 CodeMirror 6（`components/SqlEditor.vue`），方言高亮按 DbKind 映射（mysql/oceanbase→MySQL、postgresql→PostgreSQL、oracle→PLSQL）；大小写转换与压缩 SQL 必须跳过字符串字面值（`convertOutsideLiterals` / `utils/sqlFormat.ts#compressSql`）；**格式化方案可配置**（`preferences.formatPrefs`，`formatSql(kind, sql, opts)`）；**自动补全**来源于 `db_schema_snapshot`（同 schema 表/列 + comments）与当前 SQL 词（CM6 `autocompletion` 语言数据源）
 - **菜单命令**：跨组件命令经 `utils/commands.ts` 的 `app-command` 事件分发，命令需携带目标 tabId，QueryTabPane 按 tabId 过滤响应
 - **执行状态**：查询执行使用 `runSeq` 请求序列号，过期响应必须丢弃；停止按钮通过自增 runSeq 作废挂起请求（不得直接依赖 Promise 返回复位状态）

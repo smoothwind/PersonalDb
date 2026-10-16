@@ -62,9 +62,36 @@ npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 | 作业 | 内容 |
 | ---- | ---- |
 | `check` | i18n 双端 key 校验 → 前端 `vue-tsc + vite` 构建 → vitest → `cargo check`（默认与 `--no-default-features`）→ `cargo test --lib` |
-| `bundle` | `needs: check` 通过后，在 windows-latest 上跑 `npm run bundle:all`，校验 `src-tauri/binaries/` 里的 sidecar（Go/Maven 缺失会直接失败），产出 **MSI + NSIS** 并作为 Artifacts 上传；推送 `v*` 标签时另附到**草稿 Release**（自动发布需把 `draft` 改为 `false`） |
+| `bundle` | `needs: check` 通过后，在 windows-latest 上跑 `npm run bundle:all`，校验 `src-tauri/binaries/` 里的 sidecar（Go/Maven 缺失会直接失败），产出 **MSI + NSIS** 并作为 Artifacts 上传；推送 `v*` 标签时改由 **`tauri-apps/tauri-action@v1`** 构建、签名（更新用 `.sig`）并生成 `latest.json`，附到**草稿 Release**（确认无误后手动发布） |
 
 运行环境由流水线自带：Node 22、Rust stable（edition 2024 需 ≥1.85）、Go（版本取 `oracle-bridge/go.mod` 的 `go` 指令）、Temurin JDK 21、镜像预装 Maven 3.9；`RC` 按 runner 实际的 Windows SDK 覆盖（`.cargo/config.toml` 里的路径是开发机专用的）。可用 Actions 页面 **Run workflow** 手动触发。
+
+### 自动更新（签名与发布）
+
+应用内检测逻辑已就绪：**打包版**启动 5 秒后静默检查更新，命中新版本时在**状态栏与帮助菜单**给出非模态提示（不会自动下载，也不弹窗打断）；也可从「帮助 → 检查更新」或「首选项 → 关于 → 自动更新」手动检查。要让更新真正可用，还需**一次性**配置签名密钥与发布链路：
+
+1. **生成密钥对**（本机需装好前端依赖，私钥不要提交、不要贴到公网）：
+
+   ```bash
+   npm run tauri signer generate -w %USERPROFILE%\.personaldb\tauri-updater.key
+   ```
+
+   记住生成时输入的口令；`tauri-updater.key.pub` 是公钥。
+
+2. **填公钥**：把 `tauri-updater.key.pub` 的内容整段填入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`（端点已指向 `https://github.com/smoothwind/PersonalDb/releases/latest/download/latest.json`，换仓库时同步改）。
+
+3. **加仓库 Secrets**（Settings → Secrets and variables → Actions → New repository secret）：
+
+   | Secret | 值 |
+   | ---- | ---- |
+   | `TAURI_SIGNING_PRIVATE_KEY` | **私钥文件的内容**（含 `untrusted comment:` 首行，不是文件路径） |
+   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 第 1 步设置的口令 |
+
+4. **发版**：把 `src-tauri/tauri.conf.json`、`package.json`、`src-tauri/Cargo.toml` 的版本号同步递增，提交后打标签推送（如 `git tag v0.2.0 && git push origin v0.2.0`）。CI 会构建、签名并生成 `latest.json` 与安装包附到**草稿 Release**；到 Release 页面确认产物（`*.msi`/`*-setup.exe`、`*.sig`、`latest.json`）后点发布，已安装的旧版本即可检测到更新。
+
+> - `bundle.createUpdaterArtifacts` 只由发布路径经 `--config src-tauri/tauri.updater.conf.json` 开启，因此**分支/PR 与本地 `npm run bundle` 不需要私钥**即可打包。
+> - 更新目标取 MSI（`updaterJsonPreferNsis: false`）；若改为分发 NSIS 安装包，请在 `ci.yml` 中把它设为 `true`。
+> - **私钥丢失将无法再为已发布版本签发更新**，请离线备份；更换密钥会导致旧版本无法校验新更新。
 
 ### Oracle / OceanBase Oracle 支持
 

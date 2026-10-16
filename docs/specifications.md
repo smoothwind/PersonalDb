@@ -686,14 +686,20 @@
 - 前端 `stores/history.ts` 改为后端存储：首次使用把旧 localStorage `personaldb.history` **一次性迁入**后删除；`push` 乐观插入 + 后台落库；面板搜索走 SQL LIKE；**「仅当前连接」过滤**；**单击回填、双击回填并立即执行**。
 - 存储类别 `History`（`storage.catHistory`，可在「存储」设置迁移）。
 
-## SPEC-DEV-2 自动更新与签名（tauri-plugin-updater）
+## SPEC-DEV-2 自动更新检测与签名（tauri-plugin-updater）
 
-- 已接入：`updater` + `process` 插件、capabilities（`updater:default`/`process:allow-restart`）、帮助菜单「检查更新」（`UpdateChecker.vue`：check → 确认 → downloadAndInstall → relaunch）；**未配置端点时提示「未启用」**，不影响构建。
-- **启用步骤**（密钥已生成于 `%USERPROFILE%\.personaldb\tauri-updater.key`，口令 `personaldb`）：
-  1. `tauri.conf.json` → `bundle.createUpdaterArtifacts: true`；`plugins.updater.pubkey` 填入 `tauri-updater.key.pub` 内容；`plugins.updater.endpoints` 填 `https://github.com/<user>/PersonalDb/releases/latest/download/latest.json`。
-  2. 打包时设置环境变量 `TAURI_SIGNING_PRIVATE_KEY=<私钥路径>`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD=personaldb`。
-  3. Release 产物（msi + .sig + latest.json）上传 GitHub Releases；旧版应用「检查更新」即可拉取。
-  4. **私钥丢失则已发布版本无法再签发更新**，务必备份。
+- **检测行为**：`stores/update.ts` 为唯一状态机（phase/version/notes/progress/configured/lastError），`components/UpdateChecker.vue` 已移除。
+  - **启动自动检测**：仅打包版（`import.meta.env.PROD`）且在「首选项 → 关于 → 自动更新」开启时，挂载后 **延迟 5s 静默** `checkForUpdate(true)`；失败（含未配置端点/公钥）仅写日志，不打扰用户。
+  - **非模态提示**：命中新版本后 **状态栏**出现「有新版本 v{version}」（可点击进入下载确认，带 × 可「不再提示此版本」，落 `preferences.update.skippedVersion`）+ **帮助菜单「检查更新」红点**；不打弹窗、不自动下载。
+  - **手动检测**：帮助菜单「检查更新」与首选项「更新状态 → 检查更新」按钮均走 `runManualCheck()`；已最新 / 未启用 / 检测失败给一次性提示（失败带原始错误摘要）。确认 → `downloadAndInstall`（状态栏显示下载进度）→ 询问重启（`relaunch`）。
+  - 首选项 `personaldb.update`（`autoCheck` 默认开、`skippedVersion`）；未配置端点/公钥时归类为「未启用」（按错误文案含 endpoint/pubkey/not configured 判定）。
+- **构建/发布链路（GitHub）**：
+  1. `tauri.conf.json` → `plugins.updater.endpoints` = `https://github.com/smoothwind/PersonalDb/releases/latest/download/latest.json`（已填）；`plugins.updater.pubkey` 填 **公钥文件内容**（待生成，见下）。
+  2. 本机生成密钥对（需 tauri CLI，**私钥勿入库/勿贴公网**）：`npm run tauri signer generate -w %USERPROFILE%\.personaldb\tauri-updater.key`（口令自定，需与 Secret 一致）。把 `tauri-updater.key.pub` 内容填入 `pubkey`。
+  3. GitHub 仓库 Secrets：`TAURI_SIGNING_PRIVATE_KEY` = **私钥文件内容**（含 `untrusted comment` 首行，不是路径）、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = 生成时口令。
+  4. 发布：版本号在 `tauri.conf.json` / `package.json` / `Cargo.toml` 同步递增（updater 按版本比较）→ 打 `v*` 标签推送 → CI `bundle` 作业经 `tauri-apps/tauri-action@v1` 构建 + 签名 + 生成 `latest.json` 并建**草稿** Release（msi/exe + .sig + latest.json）；确认无误后手动发布会触发旧版更新。
+  5. `createUpdaterArtifacts` **不进基础配置**，只由发布路径经 `--config src-tauri/tauri.updater.conf.json` 开启——分支/PR 与本地 `npm run bundle` 无需签名密钥即可打包。
+- **私钥丢失则已发布版本无法再签发更新**，务必备份；更换密钥将使旧版本无法校验新更新。
 
 ## SPEC-SESSION-3 OceanBase Oracle 会话/锁（OB 兼容视图）
 
