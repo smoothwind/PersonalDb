@@ -71,6 +71,14 @@ export interface UiPrefs {
   leftPanelMode: 'tabs' | 'stack'
 }
 
+/** 自动更新检测偏好（仅打包版生效，见 docs/specifications.md SPEC-DEV-2） */
+export interface UpdatePrefs {
+  /** 启动后自动静默检测更新 */
+  autoCheck: boolean
+  /** 已跳过的版本号（不再提示，空 = 不跳过） */
+  skippedVersion: string
+}
+
 /** 兜底默认（供 loadPrefs 合并旧数据） */
 export function defaultUiPrefs(): UiPrefs {
   return {
@@ -204,6 +212,7 @@ const UI_KEY = 'personaldb.ui'
 const EXPORT_KEY = 'personaldb.export'
 const FORMAT_KEY = 'personaldb.format'
 const SHORTCUT_KEY = 'personaldb.shortcuts'
+const UPDATE_KEY = 'personaldb.update'
 
 function initialTheme(): ThemeMode {
   const saved = localStorage.getItem(THEME_KEY)
@@ -268,6 +277,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
   const formatPrefs = reactive<FormatPrefs>(
     loadPrefs<FormatPrefs>(FORMAT_KEY, defaultFormatPrefs()),
+  )
+  const update = reactive<UpdatePrefs>(
+    loadPrefs<UpdatePrefs>(UPDATE_KEY, { autoCheck: true, skippedVersion: '' }),
   )
   /** 快捷键覆盖（actionKey → 组合）；未覆盖项用默认值 */
   const shortcuts = ref<Record<string, string>>(
@@ -343,6 +355,20 @@ export const usePreferencesStore = defineStore('preferences', () => {
     localStorage.setItem(FORMAT_KEY, JSON.stringify({ ...formatPrefs }))
   }
 
+  function updateUpdatePrefs(patch: Partial<UpdatePrefs>): void {
+    Object.assign(update, patch)
+    localStorage.setItem(UPDATE_KEY, JSON.stringify({ ...update }))
+  }
+
+  /** 记录「不再提示该版本」 */
+  function skipVersion(version: string): void {
+    updateUpdatePrefs({ skippedVersion: version })
+  }
+
+  function clearSkippedVersion(): void {
+    updateUpdatePrefs({ skippedVersion: '' })
+  }
+
   /** 当前生效的快捷键组合 */
   function shortcutOf(actionKey: string): string {
     return shortcuts.value[actionKey] ?? shortcutDefault(actionKey)
@@ -379,6 +405,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     ui,
     exportPrefs,
     formatPrefs,
+    update,
     shortcuts,
     setTheme,
     toggleTheme,
@@ -390,6 +417,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
     updateUi,
     updateExport,
     updateFormat,
+    updateUpdatePrefs,
+    skipVersion,
+    clearSkippedVersion,
     shortcutOf,
     setShortcut,
     resetShortcut,

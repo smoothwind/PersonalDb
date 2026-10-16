@@ -403,6 +403,12 @@ query: {
     restart: 'Restart now',
     later: 'Later',
     notConfigured: 'Auto-update not enabled (endpoint & signing key required)',
+    checkFailed: 'Update check failed: {msg}',
+    downloading: 'Downloading update…',
+    progress: 'Downloading {percent}%',
+    noNotes: '(No release notes provided)',
+    availableHint: 'Version v{version} available',
+    skipVersion: 'Skip this version',
   },
   workbench: {
     tabs: 'Workspace Tabs',
@@ -919,5 +925,10 @@ query: {
     dfPreviewType: 'Type',
     dfPreviewShown: 'Rendered',
     tabAbout: 'About',
+    updateSection: 'Updates',
+    updateAutoCheck: 'Check for updates on startup',
+    updateSkipped: 'Skipped version',
+    updateClearSkipped: 'Clear',
+    updateStatus: 'Status',
   },
 }

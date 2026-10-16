@@ -85,6 +85,16 @@
   flex: 1;
 }
 
+/* 自动更新命中：菜单项右侧非模态红点（点开才进入下载确认） */
+.el-menu--popup .menu-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: 10px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  flex-shrink: 0;
+}
+
 .el-menu--popup .menu-shortcut {
   margin-left: 16px;
   font-size: 10.5px;

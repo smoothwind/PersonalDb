@@ -145,6 +145,8 @@
           <el-menu-item index="check-update">
             <el-icon class="menu-icon"><component :is="MENU_ICONS.update" /></el-icon>
             <span class="menu-text">{{ t('update.check') }}</span>
+            <!-- 自动检测命中新版本：非模态红点，点开才进入下载确认 -->
+            <span v-if="updateStore.hasUpdate" class="menu-dot" />
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -402,6 +404,40 @@
           </el-button>
         </template>
         <span class="status-right">
+          <!-- 更新检测：下载中显示进度；有新版本则常驻非模态入口（可跳过该版本） -->
+          <template v-if="updateStore.phase === 'downloading'">
+            <span class="status-update">
+              <el-icon><component :is="MENU_ICONS.update" /></el-icon>
+              {{ updateStore.progressLabel }}
+            </span>
+            <span class="status-sep">|</span>
+          </template>
+          <template v-else-if="updateStore.hasUpdate">
+            <span
+              class="status-update is-actionable"
+              role="button"
+              tabindex="0"
+              :title="t('update.availableHint', { version: updateStore.version })"
+              @click="updateStore.promptInstall()"
+              @keydown.enter="updateStore.promptInstall()"
+              @keydown.space.prevent="updateStore.promptInstall()"
+            >
+              <el-icon><component :is="MENU_ICONS.update" /></el-icon>
+              {{ t('update.availableHint', { version: updateStore.version }) }}
+            </span>
+            <el-icon
+              class="status-update-skip"
+              :title="t('update.skipVersion')"
+              role="button"
+              tabindex="0"
+              @click="updateStore.skipCurrentVersion()"
+              @keydown.enter="updateStore.skipCurrentVersion()"
+              @keydown.space.prevent="updateStore.skipCurrentVersion()"
+            >
+              <component :is="objectIcon('act_close')" />
+            </el-icon>
+            <span class="status-sep">|</span>
+          </template>
           <span
             class="status-log-toggle"
             :class="{ 'has-unread': logStore.unreadErrors > 0 }"
@@ -426,7 +462,6 @@
 <DriverManager v-model="driverManagerVisible" />
 <ConfigTransferDialog v-model:visible="transferVisible" initial-tab="export" />
 <CommandPalette v-model:visible="paletteVisible" :commands="paletteCommands" />
-<UpdateChecker ref="updateCheckerRef" />
 
       <!-- 关于 -->
       <AboutDialog v-model="aboutVisible" />
@@ -473,7 +508,7 @@ import { TOURS, maybeAutoTour, startTour } from './tours'
 import { useLayoutStore, type PanelId } from './stores/layout'
 import CommandPalette from './components/CommandPalette.vue'
 import AboutDialog from './components/AboutDialog.vue'
-import UpdateChecker from './components/UpdateChecker.vue'
+import { useUpdateStore } from './stores/update'
 import { useHistoryStore } from './stores/history'
 import { useLogStore } from './stores/logs'
 import { useConnectionStore } from './stores/connections'
@@ -494,6 +529,7 @@ const { t } = useI18n()
 const connStore = useConnectionStore()
 const tabsStore = useTabsStore()
 const prefs = usePreferencesStore()
+const updateStore = useUpdateStore()
 const snippetStore = useSnippetStore()
 const workspaceStore = useWorkspaceStore()
 const layout = useLayoutStore()
@@ -692,6 +728,12 @@ onMounted(() => {
   invoke('app_ready').catch(() => { /* dev 无 splash 时忽略 */ })
   // 首次启动漫游引导
   maybeAutoTour()
+  // 自动更新检测：仅打包版、且用户未关闭时，延迟静默检查（失败仅记日志，不打扰）
+  if (import.meta.env.PROD && prefs.update.autoCheck) {
+    window.setTimeout(() => {
+      void updateStore.checkForUpdate(true)
+    }, 5000)
+  }
   window.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -774,15 +816,9 @@ function openSessions(): void {
   })
 }
 
-/** 检查更新（updater 未配置时提示未启用） */
-const updateCheckerRef = ref<InstanceType<typeof import('./components/UpdateChecker.vue').default>>()
+/** 检查更新（手动入口：帮助菜单；未配置端点/公钥时提示未启用） */
 async function runUpdateCheck(): Promise<void> {
-  const el = updateCheckerRef.value
-  if (!el) return
-  const res = await el.checkForUpdate()
-  if (res.status === 'latest' || res.status === 'disabled' || res.status === 'error') {
-    res.status === 'error' ? ElMessage.error(res.message) : ElMessage.info(res.message)
-  }
+  await updateStore.runManualCheck()
 }
 
 const txAvailable = computed(() => {
@@ -1695,6 +1731,41 @@ body {
 .status-log-toggle.has-unread {
   color: var(--el-color-danger);
   font-weight: 600;
+}
+
+/* 更新检测：非模态提示（可点击进入下载）+ 下载进度 */
+.status-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--el-color-primary);
+}
+.status-update :deep(.el-icon) {
+  font-size: var(--pd-icon-sm);
+}
+.status-update.is-actionable {
+  cursor: pointer;
+}
+.status-update.is-actionable:hover {
+  background: var(--el-fill-color-light);
+}
+.status-update.is-actionable:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 0;
+}
+.status-update-skip {
+  cursor: pointer;
+  color: var(--el-text-color-placeholder);
+  font-size: var(--pd-icon-sm);
+}
+.status-update-skip:hover {
+  color: var(--el-color-danger);
+}
+.status-update-skip:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 0;
 }
 
 /* 页签列表弹层 */

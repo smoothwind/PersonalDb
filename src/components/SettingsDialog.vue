@@ -551,6 +551,40 @@
             <div class="about-desc">{{ t('menu.aboutBody') }}</div>
             <div class="about-stack">Tauri 2 · WebView2 · Vue 3 · TypeScript · Rust</div>
           </div>
+
+          <!-- 自动更新（检测逻辑见 docs/specifications.md SPEC-DEV-2） -->
+          <div class="pref-section">{{ t('settings.updateSection') }}</div>
+          <el-form label-width="140px" size="small">
+            <el-form-item :label="t('settings.updateAutoCheck')">
+              <el-switch
+                :model-value="prefs.update.autoCheck"
+                @update:model-value="(v: string | number | boolean) => prefs.updateUpdatePrefs({ autoCheck: Boolean(v) })"
+              />
+            </el-form-item>
+            <el-form-item v-if="prefs.update.skippedVersion" :label="t('settings.updateSkipped')">
+              <span class="update-skipped">{{ prefs.update.skippedVersion }}</span>
+              <el-button size="small" link type="primary" @click="prefs.clearSkippedVersion()">
+                {{ t('settings.updateClearSkipped') }}
+              </el-button>
+            </el-form-item>
+            <el-form-item :label="t('settings.updateStatus')">
+              <el-button size="small" :loading="updateStore.busy" @click="updateStore.runManualCheck()">
+                {{ t('update.check') }}
+              </el-button>
+              <span v-if="updateStore.phase === 'downloading'" class="update-hint">
+                {{ updateStore.progressLabel }}
+              </span>
+              <span v-else-if="updateStore.hasUpdate" class="update-hint">
+                {{ t('update.availableHint', { version: updateStore.version }) }}
+              </span>
+              <span v-else-if="!updateStore.configured" class="update-hint">
+                {{ t('update.notConfigured') }}
+              </span>
+              <span v-else-if="updateStore.phase === 'installed'" class="update-hint">
+                {{ t('update.installedDesc') }}
+              </span>
+            </el-form-item>
+          </el-form>
         </template>
       </main>
     </div>
@@ -573,6 +607,7 @@ import CellDisplay from './cell-viewers/CellDisplay.vue'
 import ValueRuleEditor from './ValueRuleEditor.vue'
 import { plsqlDeveloperPreset, defaultFormatPrefs } from '../stores/preferences'
 import { usePreferencesStore } from '../stores/preferences'
+import { useUpdateStore } from '../stores/update'
 import { SHORTCUT_ACTIONS, eventToCombo } from '../utils/shortcuts'
 import {
   storageInfo,
@@ -589,6 +624,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 
 const { t } = useI18n()
 const prefs = usePreferencesStore()
+const updateStore = useUpdateStore()
 
 const active = ref('appearance')
 
@@ -866,6 +902,20 @@ function openStorageDir(key: string): void {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
   font-family: Consolas, monospace;
+}
+
+/* 自动更新：状态提示与已跳过版本 */
+.update-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.update-skipped {
+  margin-right: 8px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  color: var(--el-text-color-regular);
 }
 
 .viewer-preview {

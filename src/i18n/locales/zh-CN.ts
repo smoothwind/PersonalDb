@@ -402,6 +402,12 @@ query: {
     restart: '立即重启',
     later: '稍后',
     notConfigured: '自动更新未启用（需配置更新端点与签名密钥）',
+    checkFailed: '检查更新失败：{msg}',
+    downloading: '正在下载更新…',
+    progress: '下载中 {percent}%',
+    noNotes: '（本次更新未提供说明）',
+    availableHint: '有新版本 v{version}',
+    skipVersion: '不再提示此版本',
   },
   workbench: {
     tabs: '功能区',
@@ -918,5 +924,10 @@ query: {
     dfPreviewType: '类型',
     dfPreviewShown: '展示效果',
     tabAbout: '关于',
+    updateSection: '自动更新',
+    updateAutoCheck: '启动时自动检测更新',
+    updateSkipped: '已跳过版本',
+    updateClearSkipped: '清除',
+    updateStatus: '更新状态',
   },
 }
