@@ -2,6 +2,8 @@
 
 基于 **Tauri 2 + WebView2 + Vue 3** 的多数据库客户端工具（Windows 桌面应用）。
 
+> 项目主页 / 下载页：<https://smoothwind.github.io/PersonalDb/>（GitHub Pages；源文件在 `site/`，由 `.github/workflows/pages.yml` 部署，需在 Settings → Pages → Source 选择 **GitHub Actions**）
+
 ## 功能特性
 
 - **多数据库**：MySQL / OceanBase（MySQL、Oracle 模式）/ PostgreSQL / Oracle / 任意 JDBC
@@ -65,6 +67,8 @@ npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 | `bundle` | `needs: check` 通过后，在 windows-latest 上跑 `npm run bundle:all`，校验 `src-tauri/binaries/` 里的 sidecar（Go/Maven 缺失会直接失败），产出 **MSI + NSIS** 并作为 Artifacts 上传；推送 `v*` 标签时改由 **`tauri-apps/tauri-action@v1`** 构建并把安装包附到**草稿 Release**（确认无误后手动发布） |
 
 运行环境由流水线自带：Node 22、Rust stable（edition 2024 需 ≥1.85）、Go（版本取 `oracle-bridge/go.mod` 的 `go` 指令）、Temurin JDK 21、镜像预装 Maven 3.9；`RC` 按 runner 实际的 Windows SDK 覆盖（`.cargo/config.toml` 里的路径是开发机专用的）。可用 Actions 页面 **Run workflow** 手动触发。
+
+另有独立工作流 `.github/workflows/pages.yml`：把 `site/` 静态站点部署到 **GitHub Pages**（项目主页与下载入口）。触发条件为 `site/**` 变更推送到 main/master、手动 Run workflow、以及 Release 发布后刷新页面版本信息；页面上的版本号与安装包直链由前端实时读取 GitHub Releases（失败时回退到 Releases 链接）。
 
 ### 更新提示（查 GitHub Releases）
 

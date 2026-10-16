@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PersonalDb · 多数据库客户端</title>
+<meta name="description" content="PersonalDb — 基于 Tauri 2 + WebView2 + Vue 3 的 Windows 多数据库客户端：MySQL / OceanBase / PostgreSQL / Oracle / 任意 JDBC。" />
+<link rel="icon" href="favicon.png" />
+<meta property="og:title" content="PersonalDb · 多数据库客户端" />
+<meta property="og:description" content="Windows 桌面多数据库客户端：MySQL / OceanBase / PostgreSQL / Oracle / 任意 JDBC。" />
+<meta property="og:type" content="website" />
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #616b76;
+    --line: #e3e6ea;
+    --accent: #2563eb;
+    --accent-soft: #eaf0ff;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --card: #1e2126;
+      --text: #e6e8eb;
+      --muted: #9aa4b0;
+      --line: #2c3137;
+      --accent: #6ea8fe;
+      --accent-soft: #1d2736;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.7 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+  header.site {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  header.site .wrap { display: flex; align-items: center; gap: 12px; height: 56px; }
+  header.site img { width: 26px; height: 26px; border-radius: 6px; }
+  header.site .name { font-weight: 600; letter-spacing: .2px; }
+  header.site nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+  header.site nav a { color: var(--muted); }
+  header.site nav a:hover { color: var(--accent); text-decoration: none; }
+
+  .hero { padding: 56px 0 8px; }
+  .hero h1 { margin: 0; font-size: 38px; line-height: 1.25; letter-spacing: -.5px; }
+  .hero .tagline { margin: 10px 0 0; color: var(--muted); font-size: 17px; }
+  .hero .en { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 16px; border-radius: 9px; font-size: 14px; font-weight: 500;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; }
+  .chip {
+    font-size: 12.5px; padding: 4px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid transparent;
+  }
+
+  section { padding: 40px 0 0; }
+  h2 { font-size: 21px; margin: 0 0 6px; }
+  h2 + .sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+  .card li { margin: 2px 0; }
+
+  .release { border-left: 3px solid var(--accent); }
+  .release .ver { font-size: 20px; font-weight: 600; }
+  .release .meta { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+  .notes {
+    white-space: pre-wrap; font-size: 13px; color: var(--muted);
+    max-height: 220px; overflow: auto; margin: 12px 0 0;
+    border-top: 1px dashed var(--line); padding-top: 12px;
+  }
+  .assets { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  footer {
+    margin-top: 48px; padding: 22px 0 40px;
+    border-top: 1px solid var(--line); color: var(--muted); font-size: 13px;
+  }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  footer nav { display: flex; gap: 14px; }
+  .muted { color: var(--muted); }
+  code {
+    font: 12.5px/1.5 Consolas, "Cascadia Mono", monospace;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 5px; border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <img src="icon.png" alt="PersonalDb" />
+    <span class="name">PersonalDb</span>
+    <nav>
+      <a href="#features">功能</a>
+      <a href="#download">下载</a>
+      <a href="#require">系统要求</a>
+      <a href="https://github.com/smoothwind/PersonalDb" target="_blank" rel="noopener">仓库</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>PersonalDb</h1>
+    <p class="tagline">Windows 桌面多数据库客户端：连接、浏览、编写 SQL、导出与会话管理一站式完成。</p>
+    <p class="en">A multi-database client for Windows, built with Tauri 2 + WebView2 + Vue 3.</p>
+    <div class="btns">
+      <a class="btn primary" href="https://github.com/smoothwind/PersonalDb/releases/latest" id="btn-download">
+        下载最新版
+      </a>
+      <a class="btn" href="https://github.com/smoothwind/PersonalDb/releases">全部发布</a>
+      <a class="btn" href="https://github.com/smoothwind/PersonalDb">源代码</a>
+    </div>
+    <div class="chips">
+      <span class="chip">MySQL</span>
+      <span class="chip">OceanBase（MySQL 模式）</span>
+      <span class="chip">OceanBase（Oracle 模式）</span>
+      <span class="chip">PostgreSQL</span>
+      <span class="chip">Oracle</span>
+      <span class="chip">任意 JDBC</span>
+    </div>
+  </div>
+
+  <section id="download">
+    <h2>下载</h2>
+    <p class="sub">安装包随 Release 发布，页面会自动取最新的<strong>已发布</strong>版本；也可直接进 Releases 页面挑选。</p>
+    <div class="card release">
+      <div class="ver" id="rel-ver">正在读取最新版本…</div>
+      <div class="meta" id="rel-meta">数据来自 GitHub Releases</div>
+      <div class="assets" id="rel-assets">
+        <a class="btn" href="https://github.com/smoothwind/PersonalDb/releases/latest">前往 Releases 下载</a>
+      </div>
+      <div class="notes" id="rel-notes" hidden></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>功能</h2>
+    <p class="sub">面向日常数据库运维与开发，重点在「连得上、看得清、改得动」。</p>
+    <div class="grid">
+      <div class="card">
+        <h3>多数据库与免装驱动</h3>
+        <ul>
+          <li>MySQL / PostgreSQL / Oracle / OceanBase / 任意 JDBC</li>
+          <li>Oracle 免装 OCI（内置 go-ora 桥接）</li>
+          <li>OceanBase Oracle 模式走官方 JDBC 驱动</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>连接与凭据</h3>
+        <ul>
+          <li>分组文件夹、多级嵌套、拖拽归类、搜索</li>
+          <li>密码存 <strong>Windows 凭据管理器</strong>，配置文件不留明文</li>
+          <li>配置导入导出（可口令加密）；支持 DBeaver / Navicat / PL/SQL Developer 导入</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>对象浏览与编辑</h3>
+        <ul>
+          <li>表 / 视图 / 索引 / 序列 / 函数 / 存储过程 / 触发器</li>
+          <li>表结构、索引、源码查看（Tab 形式）与变更预览执行</li>
+          <li>对象状态角标（Oracle INVALID / UNUSABLE）与一键重编译</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>SQL 编辑器</h3>
+        <ul>
+          <li>CodeMirror 6，方言高亮 + 表/列自动补全</li>
+          <li>快捷指令、自定义美化器、执行计划</li>
+          <li>全部 / 选中 / 当前行执行，多语句多结果集</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>结果集</h3>
+        <ul>
+          <li>大结果自动虚拟滚动，分页续拉</li>
+          <li>排序、筛选、值筛选、统计行、列宽持久化</li>
+          <li>多选复制、导出 Excel / SQL / CSV / TXT / JSON</li>
+          <li>结果编辑（预览 DML + 撤销重做 + 事务提交）</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>会话与锁</h3>
+        <ul>
+          <li>活动会话 / 阻塞链 / 锁等待视图</li>
+          <li>取消查询、终止会话（Oracle 双模式、批量）</li>
+          <li>会话详情与 CSV 导出</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>界面与效率</h3>
+        <ul>
+          <li>工作台四区停靠 + 悬浮窗、左右/上下分屏</li>
+          <li>命令面板 Ctrl+K、查询历史、快捷指令</li>
+          <li>浅色 / 深色主题，中文 / English 界面</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>数据与隐私</h3>
+        <ul>
+          <li>数据库连接全部直连，不经任何中转服务器</li>
+          <li>不上传连接信息、SQL 或结果集</li>
+          <li>唯一的外联是「检查更新」时读取 GitHub 公开发布信息</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="require">
+    <h2>系统要求与说明</h2>
+    <p class="sub">仅支持 Windows 桌面端（x64）。</p>
+    <div class="grid">
+      <div class="card">
+        <h3>运行环境</h3>
+        <ul>
+          <li>Windows 10 1803+ / Windows 11（x64）</li>
+          <li>WebView2 运行时（Win11 与较新 Win10 已内置）</li>
+          <li>仅在使用 OceanBase Oracle 模式时需要 <code>JRE 21+</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>安装包</h3>
+        <ul>
+          <li><code>.msi</code>：标准 MSI 安装包</li>
+          <li><code>-setup.exe</code>：NSIS 安装包</li>
+          <li>两者功能一致，任选其一即可，无需共存</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>更新方式</h3>
+        <ul>
+          <li>应用内「帮助 → 检查更新」查询 GitHub 上的最新发布</li>
+          <li>只做提示，不自动下载、不静默安装</li>
+          <li>下载安装包覆盖安装即可，配置与连接保持不变</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>已知限制</h3>
+        <ul>
+          <li>OceanBase Oracle 模式需填 <code>用户@租户</code>，Schema 留空</li>
+          <li>OceanBase 连接需直连 OBServer(2881) 或 OBProxy(2883)</li>
+          <li>macOS / Linux 暂未提供构建</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <nav>
+      <a href="https://github.com/smoothwind/PersonalDb" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a href="https://github.com/smoothwind/PersonalDb/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/smoothwind/PersonalDb/issues" target="_blank" rel="noopener">问题反馈</a>
+    </nav>
+    <span class="muted">本页由 GitHub Pages 托管 · PersonalDb</span>
+  </div>
+</footer>
+
+<script>
+  // 取最新的「已发布」Release（草稿/预发布不计），填充版本号与安装包直链；
+  // 失败（限流/离线/未发布）时保留静态兜底链接，不报错弹窗。
+  const REPO = 'smoothwind/PersonalDb'
+  const releasesPage = `https://github.com/${REPO}/releases`
+  const fmtSize = (bytes) => (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  const el = (id) => document.getElementById(id)
+
+  function assetLabel(name) {
+    if (/\.msi$/i.test(name)) return '下载 MSI 安装包'
+    if (/-setup\.exe$/i.test(name)) return '下载安装程序（NSIS）'
+    return '下载 ' + name
+  }
+
+  async function fillLatestRelease() {
+    // 8s 超时兜底：接口被限流/网络不可达时尽快回退到静态链接
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), 8000)
+    let res
+    try {
+      res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+        headers: { Accept: 'application/vnd.github+json' },
+        signal: ctl.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const rel = await res.json()
+    const tag = rel.tag_name || rel.name || ''
+    if (!tag) throw new Error('no tag')
+
+    el('rel-ver').textContent = tag
+    const when = rel.published_at ? new Date(rel.published_at).toLocaleDateString('zh-CN') : ''
+    el('rel-meta').textContent = `${when ? when + ' 发布 · ' : ''}当前最新发布（点下方按钮直接下载安装包）`
+
+    const assets = (rel.assets || []).filter((a) => /\.msi$|-setup\.exe$/i.test(a.name))
+    assets.sort((a, b) => (/\.msi$/i.test(b.name) ? 1 : 0) - (/\.msi$/i.test(a.name) ? 1 : 0))
+    const box = el('rel-assets')
+    box.innerHTML = ''
+    for (const a of assets) {
+      const link = document.createElement('a')
+      link.className = 'btn' + (/\.msi$/i.test(a.name) ? ' primary' : '')
+      link.href = a.browser_download_url
+      link.textContent = `${assetLabel(a.name)}（${fmtSize(a.size)}）`
+      box.appendChild(link)
+    }
+    const all = document.createElement('a')
+    all.className = 'btn'
+    all.href = rel.html_url || releasesPage
+    all.textContent = '本次发布详情'
+    box.appendChild(all)
+
+    const notes = (rel.body || '').trim()
+    if (notes) {
+      const notesBox = el('rel-notes')
+      notesBox.textContent = notes
+      notesBox.hidden = false
+    }
+  }
+
+  fillLatestRelease().catch(() => {
+    el('rel-ver').textContent = '点击前往 Releases 查看最新版本'
+    el('rel-meta').textContent = '未能读取 GitHub 发布信息（网络或接口限制），可直接在 Releases 页面下载'
+  })
+</script>
+</body>
+</html>

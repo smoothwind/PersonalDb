@@ -18,11 +18,12 @@ cargo check --no-default-features  # 排除 oracle 的路径检查（改动 cfg 
 cargo fix --lib --allow-dirty      # 自动修复 warning
 ```
 
-构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。CI（`.github/workflows/ci.yml`）为 `check` + `bundle` 两个作业：push（main/master、`v*` 标签）与 PR 均触发；`bundle` 在 windows-latest 上经 Go/Maven 产出 MSI + NSIS 并上传 Artifact，`v*` 标签改由 `tauri-apps/tauri-action@v1` 构建并把安装包附到草稿 Release（无签名、无需 Secrets，见 SPEC-DEV-2）。
+构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。CI（`.github/workflows/ci.yml`）为 `check` + `bundle` 两个作业：push（main/master、`v*` 标签）与 PR 均触发；`bundle` 在 windows-latest 上经 Go/Maven 产出 MSI + NSIS 并上传 Artifact，`v*` 标签改由 `tauri-apps/tauri-action@v1` 构建并把安装包附到草稿 Release（无签名、无需 Secrets，见 SPEC-DEV-2）。另有 `.github/workflows/pages.yml`：把 `site/`（项目主页/下载页）部署到 GitHub Pages（需在 Settings → Pages 将 Source 设为 GitHub Actions）。
 
 ## 架构
 
 - `src/` Vue 3 前端（单窗口布局，无路由）：`App.vue`（**菜单栏（最顶）→ 工具栏 → 连接树 → 查询 Tabs → 状态栏**，主题切换 + 首选项）、`api/db.ts`（invoke 封装）、`stores/`（connections 多会话 Map / tabs 查询 Tab / snippets 快捷指令 / preferences 偏好）、`types/db.ts`（与 Rust serde camelCase 对齐的类型）、`utils/objectIcons.ts`（**对象类型→图标统一映射**）、`components/`（ConnectionTree 连接树（对象分组/搜索/右键菜单）、QueryTabPane 查询面板（可编辑 SQL + 结果集增强）、**TableInspectorPane 表查看面板（列/索引/源码 Tab，支持编辑与变更预览执行）**、ObjectInspector 只读对象查看器（非表对象定义）、RoutineEditor 例程编辑器（存储过程/函数）、CodeViewer 只读代码视图、SqlEditor 可编辑 CM6 编辑器、SnippetSettings、ConnectionForm、DbLogo、WelcomePane）
+- `site/` GitHub Pages 项目主页（单页静态站点：介绍 / 下载入口 / 系统要求；`site/index.html` 内联 CSS+JS，版本号与安装包直链由前端实时读 GitHub Releases 填入，失败回退 Releases 链接；不走 Vite 构建，由 `.github/workflows/pages.yml` 部署）
 - **Tab 类型约定**：`QueryTab.type` 为 `'query'`（查询编辑器）/ `'table'`（表查看面板）/ `'object'`（对象定义查看）/ `'routine'`（例程编辑器）/ `'session'`（数据库会话管理）；App.vue 按 type 分派 `QueryTabPane` / `TableInspectorPane` / `ObjectInspector` / `RoutineEditor` / `SessionPane`；**对象查看与例程编辑一律以 Tab 形式，禁止抽屉组件**；面板经 `openTableInspector/openObjectInspector/openRoutineEditor/openSessionManager`（按连接+库+对象去重）
 - 交互约定：连接树单击表仅选中，双击表/视图打开 SQL 编辑器并生成预览 SQL（不自动执行）；**双击连接节点=连接并加载库列表；树展开不作为连接触发器**（未连接节点展开为空，防断开后刷新/启动恢复隐式重连），右键未连接节点首项为「连接」；右键节点管理（新建查询/编辑/断开/删除/导出/新建表/查看结构/查看源码/编辑例程/重新编译）；**表的结构与源码走「表查看面板」Tab，非表对象定义走「对象查看面板」Tab，例程走「例程编辑」Tab（均为 Tab，禁用抽屉）**；查询 Tab 只承担可编辑 SQL（选中执行、快捷指令展开、方言格式化、执行计划）；**查询页签双击标题可重命名**
 - 事务约定：**事务管理位于主窗体工具栏**（App.vue，紧凑：分段控件 + 提交/回滚图标按钮），作用于当前激活查询 Tab 所属连接，按 `capabilities.transactions` 显隐；手动模式由**会话专用连接**承载事务（MySQL/PG 支持；Oracle 非 Send 连接不支持 → 始终自动提交，且 DML 后须显式 `conn.commit()`，否则变更不生效）

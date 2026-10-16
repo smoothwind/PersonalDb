@@ -1,0 +1,45 @@
+name: Pages
+
+# 项目主页（`site/` 静态站点，含下载入口）→ GitHub Pages。
+# 前提：仓库 Settings → Pages → Source 选择 **GitHub Actions**（首次可让 configure-pages 自动切换）。
+# 触发：`site/` 变更推送到 main/master、手动 Run workflow、以及 Release 发布后刷新页面上的版本信息。
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个部署，避免并发写 Pages
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy site to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
