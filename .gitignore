@@ -1,0 +1,53 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# 前端构建 / 测试产物
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas
+
+# Oracle 桥接产物（由 build.rs 从 oracle-bridge/ 源码构建）
+src-tauri/binaries/*.exe
+src-tauri/oracle-bridge/oracle-bridge.exe
+src-tauri/oracle-bridge/oracle-bridge
+
+# JDBC 桥接产物（Maven）
+src-tauri/jdbc-bridge/target/
+src-tauri/binaries/*.jar
+
+# 开发模式运行时数据（存储目录体系）
+.devdata/
+
+# 便携运行数据目录（安装目录\data，在项目根直接运行产物时可能生成）
+/data/
+
+# gui-doctor 诊断临时产物
+.gui-doctor/

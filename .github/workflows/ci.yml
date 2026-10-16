@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: i18n key diff (zh-CN vs en)
+        run: npm run check:i18n
+
+      - name: Frontend build (vue-tsc + vite)
+        run: npm run build
+
+      - name: Frontend unit tests (vitest)
+        run: npm test
+
+      - name: Rust check (default features)
+        working-directory: src-tauri
+        run: cargo check
+
+      - name: Rust check (no default features)
+        working-directory: src-tauri
+        run: cargo check --no-default-features
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib

@@ -1,0 +1,80 @@
+/**
+ * UI 设计令牌（间距 / 圆角 / 高度）+ 跨组件共享的原子类。
+ * 仅存放全局约定值；组件私有样式仍留在各组件 scoped 内。
+ */
+
+:root {
+  --pd-space-1: 4px;
+  --pd-space-2: 8px;
+  --pd-space-3: 12px;
+  --pd-space-4: 16px;
+  --pd-radius: 6px;
+  --pd-radius-lg: 10px;
+  --pd-titlebar-h: 32px;
+  --pd-menu-h: 34px;
+  --pd-header-h: 42px;
+  /* 功能带（面板头/工具栏/页签栏）统一视觉：浅填充底 + 1px 下边线，与内容区形成清晰层次（SPEC-UI-25） */
+  --pd-band-bg: var(--el-fill-color-lighter);
+  --pd-band-border: 1px solid var(--el-border-color-lighter);
+  /* 主窗左侧导航条宽度（Activity Bar 模式，SPEC-UI-26） */
+  --pd-rail-w: 44px;
+  /* 图标尺寸三档（SPEC-UI-30）：sm=工具带/小按钮、md=面板头与动作按钮、lg=导航条/主工具按钮
+     组件内用 CSS 指定（`font-size: var(--pd-icon-md)`）优先，避免各处散落 :size 数字 */
+  --pd-icon-sm: 13px;
+  --pd-icon-md: 15px;
+  --pd-icon-lg: 17px;
+}
+
+/* 页签上的连接色点（按连接 id 哈希取色，多连接时一眼区分） */
+.conn-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+/* 连接状态语义：断开=红圈，未连接=半透明 */
+.conn-dot.is-lost {
+  box-shadow: 0 0 0 2px var(--el-color-danger);
+}
+
+.conn-dot.is-off {
+  opacity: 0.35;
+}
+
+/* ===== 面板工具栏三段式（SPEC-UI-24）共享原子类 ===== */
+/* 段间竖分隔线：视图｜监视/过滤｜动作/状态 */
+.pt-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--el-border-color);
+  margin: 0 2px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* 弹性空间：把动作/状态段推到右侧 */
+.pt-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+/* ===== 对话框标题（图标 + 文本，SPEC-UI-30 图标体系） ===== */
+.dlg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.dlg-title .el-icon {
+  font-size: var(--pd-icon-md);
+  color: var(--el-color-primary);
+}

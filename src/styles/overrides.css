@@ -1,0 +1,277 @@
+/**
+ * Element Plus 浮层样式统一覆盖（与主题配色一致）。
+ * 默认 tooltip 为深色底，在浅色主题下与整体配色违和，此处统一为主题色系。
+ */
+
+/* Tooltip（effect="dark" 对应 .is-dark） */
+.el-popper.is-dark {
+  background: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  border: 1px solid var(--el-border-color-light);
+  box-shadow: var(--el-box-shadow);
+}
+
+.el-popper.is-dark .el-popper__arrow::before {
+  background: var(--el-bg-color-overlay) !important;
+  border: 1px solid var(--el-border-color-light) !important;
+}
+
+/* 浮层内富文本/提示文字 */
+.el-popper.is-dark .el-tooltip__popper,
+.el-popper.is-dark .el-tooltip__content,
+.el-popper.is-dark .el-popper__content {
+  color: var(--el-text-color-primary);
+}
+
+/* ===== el-segmented（small）：EP 的 small 只降高度不降字号（仍 14px），与面板内 12px 的 small 控件不协调 ===== */
+.el-segmented--small {
+  font-size: 12px;
+  min-height: 24px;
+}
+.el-segmented--small .el-segmented__item {
+  padding: 0 10px;
+}
+
+/* ===== 应用菜单栏下拉（el-menu--popup 由 EP teleport 到 body，不在 .app-menu 内，必须全局） =====
+   紧凑菜单：176px 定宽、26px 项高、15px 图标槽、组间分隔线（SPEC-UI-29） */
+.el-menu--popup {
+  min-width: 176px;
+  padding: 4px;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* 项高/内边距需 3 类优先级（EP 对水平菜单弹层项 `.el-menu--horizontal .el-menu--popup .el-menu-item` 有更高优先级规则） */
+.el-menu--popup.el-menu .el-menu-item,
+.el-menu--popup.el-menu .el-sub-menu__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  line-height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.el-menu--popup .el-sub-menu__icon-arrow {
+  margin-left: auto;
+  color: var(--el-text-color-placeholder);
+}
+
+/* 菜单项图标槽：15px 定宽，hover 跟随主色 */
+.el-menu--popup .menu-icon {
+  width: 15px;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.el-menu--popup .el-menu-item:hover .menu-icon,
+.el-menu--popup .el-sub-menu__title:hover .menu-icon {
+  color: var(--el-color-primary);
+}
+
+/* 分组分隔线 */
+.el-menu--popup .menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--el-border-color-lighter);
+}
+
+.el-menu--popup .menu-text {
+  flex: 1;
+}
+
+.el-menu--popup .menu-shortcut {
+  margin-left: 16px;
+  font-size: 10.5px;
+  color: var(--el-text-color-placeholder);
+  font-family: Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+
+/* ===== 竖向分隔线统一高度（工具栏/面板内一致，SPEC-UI-33 杂项对齐） ===== */
+.el-divider--vertical {
+  height: 16px;
+  margin: 0 2px;
+}
+
+/* ===== 漫游指导（driver.js）：改用主题令牌，深浅色均与整体配色一致（SPEC-UI-32）
+   注意：driver.css 在本模块之后加载，同优先级会覆盖，故容器/子项选择器一律双类提升优先级 ===== */
+.driver-popover.driver-popover {
+  background-color: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  box-shadow: var(--el-box-shadow);
+  max-width: 320px;
+  font-family: inherit;
+}
+
+.driver-popover.driver-popover .driver-popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.driver-popover.driver-popover .driver-popover-description {
+  font-size: 12.5px;
+  color: var(--el-text-color-regular);
+}
+
+.driver-popover.driver-popover .driver-popover-close-btn {
+  color: var(--el-text-color-placeholder);
+}
+
+.driver-popover.driver-popover .driver-popover-close-btn:hover {
+  color: var(--el-color-primary);
+}
+
+.driver-popover.driver-popover .driver-popover-progress-text {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+}
+
+.driver-popover.driver-popover button {
+  text-shadow: none;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.driver-popover.driver-popover .driver-popover-footer button {
+  background-color: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  border: 1px solid var(--el-border-color);
+}
+
+.driver-popover.driver-popover .driver-popover-footer button:hover {
+  background-color: var(--el-fill-color);
+  color: var(--el-color-primary);
+}
+
+.driver-popover.driver-popover .driver-popover-footer button.driver-popover-next-btn,
+.driver-popover.driver-popover .driver-popover-footer button.driver-popover-next-btn:hover {
+  background-color: var(--el-color-primary);
+  color: #fff;
+  border-color: var(--el-color-primary);
+}
+
+.driver-popover.driver-popover .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--el-bg-color-overlay);
+}
+
+.driver-popover.driver-popover .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--el-bg-color-overlay);
+}
+
+.driver-popover.driver-popover .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--el-bg-color-overlay);
+}
+
+.driver-popover.driver-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--el-bg-color-overlay);
+}
+
+/* 高亮元素的描边 */
+.driver-active-element {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+/* ===== SQL 自动补全弹层（CodeMirror 6） ===== */
+.cm-tooltip.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--el-color-primary-light-9);
+}
+
+/* 按类型绘制矢量图标（SVG mask 着色）：T 表 / V 视图 / A 文本 / # 数值 / D 日期 / ⬜ 二进制 / {} JSON / ✓ 布尔 / ★ 关键字 */
+.cm-tooltip-autocomplete .cm-completionIcon {
+  width: 15px !important;
+  height: 15px !important;
+  border: none !important;
+  border-radius: 0;
+  margin-right: 6px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+.cm-tooltip-autocomplete .cm-completionIcon::after {
+  content: '' !important;
+}
+
+/* 表 */
+.cm-tooltip-autocomplete .cm-completionIcon-class {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3Cline x1='10' y1='10' x2='10' y2='20'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3Cline x1='10' y1='10' x2='10' y2='20'/%3E%3C/svg%3E");
+}
+
+/* 视图（眼睛） */
+.cm-tooltip-autocomplete .cm-completionIcon-interface {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+}
+
+/* 文本（Type） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-text {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 7 4 4 20 4 20 7'/%3E%3Cline x1='12' y1='4' x2='12' y2='20'/%3E%3Cline x1='9' y1='20' x2='15' y2='20'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 7 4 4 20 4 20 7'/%3E%3Cline x1='12' y1='4' x2='12' y2='20'/%3E%3Cline x1='9' y1='20' x2='15' y2='20'/%3E%3C/svg%3E");
+}
+
+/* 数值（#） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-num {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='4' y1='9' x2='20' y2='9'/%3E%3Cline x1='4' y1='15' x2='20' y2='15'/%3E%3Cline x1='10' y1='3' x2='8' y2='21'/%3E%3Cline x1='16' y1='3' x2='14' y2='21'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='4' y1='9' x2='20' y2='9'/%3E%3Cline x1='4' y1='15' x2='20' y2='15'/%3E%3Cline x1='10' y1='3' x2='8' y2='21'/%3E%3Cline x1='16' y1='3' x2='14' y2='21'/%3E%3C/svg%3E");
+}
+
+/* 日期（日历） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-date {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+}
+
+/* 二进制（方框点） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-bin {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='12' cy='12' r='2.5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='12' cy='12' r='2.5'/%3E%3C/svg%3E");
+}
+
+/* JSON（花括号） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-json {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1'/%3E%3Cpath d='M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1'/%3E%3Cpath d='M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1'/%3E%3C/svg%3E");
+}
+
+/* 布尔（勾选圆） */
+.cm-tooltip-autocomplete .cm-completionIcon-col-bool {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpolyline points='8 12 11 15 16 9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpolyline points='8 12 11 15 16 9'/%3E%3C/svg%3E");
+}
+
+/* 关键字（星） */
+.cm-tooltip-autocomplete .cm-completionIcon-keyword {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='2' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9'/%3E%3C/svg%3E");
+}
+
+/* 文档词（点） */
+.cm-tooltip-autocomplete .cm-completionIcon-text {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E");
+}
+
+/* 内联详情（comments，不再用二次 tooltip） */
+.cm-tooltip-autocomplete .cm-completionDetail {
+  font-style: normal;
+  color: var(--el-text-color-secondary);
+  margin-left: 8px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

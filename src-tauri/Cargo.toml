@@ -1,0 +1,74 @@
+[package]
+name = "personal-db"
+version = "0.1.0"
+description = "PersonalDb - 基于 Tauri2 的多数据库客户端工具"
+authors = ["qiuyj"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "personal_db_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+# Oracle 支持默认启用（ODPI-C 运行时动态加载 OCI 库，编译期不依赖 Instant Client）；
+# 如需减小体积可用 --no-default-features 排除，届时 Oracle/OB Oracle 类型会提示未启用
+[features]
+default = ["oracle"]
+oracle = ["dep:oracle"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 数据库驱动
+mysql_async = "0.35"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1", "with-serde_json-1"] }
+deadpool-postgres = "0.14"
+fallible-iterator = "0.2"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+base64 = "0.22"
+rust_xlsxwriter = "0.89"
+oracle = { version = "0.6", optional = true, features = ["chrono"] }
+
+# 通用
+async-trait = "0.1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time", "process", "io-util", "rt", "macros"] }
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+dirs = "5"
+
+# 配置导入/导出与加密
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+sha2 = "0.10"
+quick-xml = "0.36"
+blowfish = "0.9"
+
+# 查询历史（本地 SQLite）
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 密码存于 Windows 凭据管理器（macOS/Linux 由 keyring 对应 feature 映射）
+keyring = { version = "3", features = ["windows-native"] }
+winreg = "0.55"
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
