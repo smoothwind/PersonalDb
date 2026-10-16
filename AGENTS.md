@@ -45,7 +45,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - 空状态约定：统一用 `components/EmptyState.vue`（icon=APP_ICONS key + title/hint/action 插槽），禁止散落 el-empty/自绘占位
 - 右键菜单约定：**唯一实现 `components/ContextMenu.vue`**（Teleport + 视口收边 + 全局收起/Esc 集中实现），`:items="CtxMenuItem[]"` + `@select(key)`；**禁止新增自绘右键菜单或自行注册收起监听**（SPEC-UI-31）
 - 图标尺寸/焦点环约定：尺寸走 `styles/tokens.css` 的 `--pd-icon-sm/md/lg`（13/15/17，新代码禁止散落 `:size` 数字）；自绘 button 必须带 `:focus-visible` 焦点环（SPEC-UI-30）
-- i18n 校验约定：`npm run check:i18n`（`scripts/check-i18n.mts`，node strip-types 递归对比 zh/en 叶子 key，缺失即非零退出）；CI（`.github/workflows/ci.yml`）强制执行
+- i18n 校验约定：`npm run check:i18n`（`scripts/check-i18n.mts`，node strip-types 递归对比 zh/en 叶子 key，缺失即非零退出；**需 Node 22.6+**，Node 20 报 `bad option: --experimental-strip-types`）；CI（`.github/workflows/ci.yml`）强制执行
 - 虚拟滚动约定：结果集 >600 行且非编辑态走 `ResultVirtualGrid.vue`（el-table-v2，排序+右键复制），否则完整 el-table；行对象按 `c{count}_{name}` prop 键，虚拟模式需转矩阵
 - 多结果集约定：非 Oracle 连接 `splitStatements` 分割后逐条执行（`runMultiStatements`），`tab.multiResults/activeResultIndex` + segmented 切换；Oracle 含 PL/SQL 块跳过分割
 - 编辑撤销约定：`editUndoStack/editRedoStack` 全量快照（上限 50），五类变更入口均需 `pushEditUndo()`；Ctrl+Z/Ctrl+Y 经 `onEditKeydown`（编辑态且非单元格输入中）

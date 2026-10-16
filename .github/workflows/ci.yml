@@ -19,21 +19,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22.6+ 才有 --experimental-strip-types（check:i18n 依赖），Vite 8 另需 ≥22.12
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # 版本跟随 oracle-bridge/go.mod 的 go 指令，避免工具链与模块要求不匹配
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: src-tauri/oracle-bridge/go.mod
+          cache-dependency-path: src-tauri/oracle-bridge/go.sum
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # src-tauri/.cargo/config.toml 里写死了开发机的 SDK 版本路径，此处按 runner 实际 SDK 覆盖
+      # （cargo 的 [env] 不覆盖已有进程环境变量，故 GITHUB_ENV 里的 RC 生效）
+      - name: Locate rc.exe (Windows SDK)
+        shell: pwsh
+        run: |
+          $rc = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\rc.exe' -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if ($rc) {
+            Write-Host "RC=$($rc.FullName)"
+            "RC=$($rc.FullName)" >> $env:GITHUB_ENV
+          } else {
+            Write-Warning "未找到 Windows SDK rc.exe，回退由 PATH 解析"
+          }
 
       - name: Install frontend deps
         run: npm ci
@@ -70,7 +91,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # edition 2024 需要 Rust 1.85+
@@ -79,7 +100,8 @@ jobs:
       # oracle-bridge：build.rs 调 Go 编译为 sidecar（缺 Go 会静默跳过 → 无内置 Oracle 驱动）
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: src-tauri/oracle-bridge/go.mod
+          cache-dependency-path: src-tauri/oracle-bridge/go.sum
 
       # jdbc-bridge：build.rs 调 Maven 打包 fat jar，需要 JRE/JDK 21（JAVA_HOME 由本动作设置）
       - uses: actions/setup-java@v4
@@ -90,6 +112,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+
+      - name: Locate rc.exe (Windows SDK)
+        shell: pwsh
+        run: |
+          $rc = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\rc.exe' -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if ($rc) {
+            Write-Host "RC=$($rc.FullName)"
+            "RC=$($rc.FullName)" >> $env:GITHUB_ENV
+          } else {
+            Write-Warning "未找到 Windows SDK rc.exe，回退由 PATH 解析"
+          }
 
       - name: Install frontend deps
         run: npm ci
