@@ -692,10 +692,11 @@
   - **启动自动检测**：仅打包版（`import.meta.env.PROD`）且在「首选项 → 关于 → 自动更新」开启时，挂载后 **延迟 5s 静默** `checkForUpdate(true)`；失败（含未配置端点/公钥）仅写日志，不打扰用户。
   - **非模态提示**：命中新版本后 **状态栏**出现「有新版本 v{version}」（可点击进入下载确认，带 × 可「不再提示此版本」，落 `preferences.update.skippedVersion`）+ **帮助菜单「检查更新」红点**；不打弹窗、不自动下载。
   - **手动检测**：帮助菜单「检查更新」与首选项「更新状态 → 检查更新」按钮均走 `runManualCheck()`；已最新 / 未启用 / 检测失败给一次性提示（失败带原始错误摘要）。确认 → `downloadAndInstall`（状态栏显示下载进度）→ 询问重启（`relaunch`）。
+  - **Windows 安装阶段会自动退出应用**（updater 的 Windows 安装限制，`installMode` 默认 passive：系统弹进度窗，无需交互），因此「安装完成 → 是否立即重启」对话框实际仅在非 Windows 平台可达；Windows 上安装器接管后应用即退出。
   - 首选项 `personaldb.update`（`autoCheck` 默认开、`skippedVersion`）；未配置端点/公钥时归类为「未启用」（按错误文案含 endpoint/pubkey/not configured 判定）。
 - **构建/发布链路（GitHub）**：
   1. `tauri.conf.json` → `plugins.updater.endpoints` = `https://github.com/smoothwind/PersonalDb/releases/latest/download/latest.json`（已填）；`plugins.updater.pubkey` 填 **公钥文件内容**（待生成，见下）。
-  2. 本机生成密钥对（需 tauri CLI，**私钥勿入库/勿贴公网**）：`npm run tauri signer generate -w %USERPROFILE%\.personaldb\tauri-updater.key`（口令自定，需与 Secret 一致）。把 `tauri-updater.key.pub` 内容填入 `pubkey`。
+  2. 本机生成密钥对（需 tauri CLI，**私钥勿入库/勿贴公网**）：`npm run tauri signer generate -- -w %USERPROFILE%\.personaldb\tauri-updater.key`（npm 转发参数须带 `--`；口令自定，需与 Secret 一致）。把 `tauri-updater.key.pub` 内容填入 `pubkey`。
   3. GitHub 仓库 Secrets：`TAURI_SIGNING_PRIVATE_KEY` = **私钥文件内容**（含 `untrusted comment` 首行，不是路径）、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = 生成时口令。
   4. 发布：版本号在 `tauri.conf.json` / `package.json` / `Cargo.toml` 同步递增（updater 按版本比较）→ 打 `v*` 标签推送 → CI `bundle` 作业经 `tauri-apps/tauri-action@v1` 构建 + 签名 + 生成 `latest.json` 并建**草稿** Release（msi/exe + .sig + latest.json）；确认无误后手动发布会触发旧版更新。
   5. `createUpdaterArtifacts` **不进基础配置**，只由发布路径经 `--config src-tauri/tauri.updater.conf.json` 开启——分支/PR 与本地 `npm run bundle` 无需签名密钥即可打包。

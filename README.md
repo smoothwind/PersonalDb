@@ -70,10 +70,10 @@ npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 
 应用内检测逻辑已就绪：**打包版**启动 5 秒后静默检查更新，命中新版本时在**状态栏与帮助菜单**给出非模态提示（不会自动下载，也不弹窗打断）；也可从「帮助 → 检查更新」或「首选项 → 关于 → 自动更新」手动检查。要让更新真正可用，还需**一次性**配置签名密钥与发布链路：
 
-1. **生成密钥对**（本机需装好前端依赖，私钥不要提交、不要贴到公网）：
+1. **生成密钥对**（本机需装好前端依赖，私钥不要提交、不要贴到公网；npm 转发参数必须带 `--`）：
 
    ```bash
-   npm run tauri signer generate -w %USERPROFILE%\.personaldb\tauri-updater.key
+   npm run tauri signer generate -- -w %USERPROFILE%\.personaldb\tauri-updater.key
    ```
 
    记住生成时输入的口令；`tauri-updater.key.pub` 是公钥。
