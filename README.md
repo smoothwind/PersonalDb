@@ -79,7 +79,8 @@ npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 - **手动触发**：帮助菜单「检查更新」或「首选项 → 关于 → 更新提示 → 检查更新」。前端直接请求 `https://api.github.com/repos/smoothwind/PersonalDb/releases/latest`（换仓库时改 `src/stores/update.ts` 的 `GITHUB_REPO`），与当前应用版本（`getVersion()`，取自 `tauri.conf.json`）经 `utils/version.ts#compareVersions` 比较。
 - **命中新版本**：状态栏出现「有新版本 vX.Y.Z」（点击用浏览器打开发布页）+ 帮助菜单红点；可「不再提示此版本」（存 `personaldb.update`）。不做弹窗打断、不自动下载。
 - 只比较**已发布**的 Release（草稿与预发布版本不计入）；仓库为私有或尚无 Release 时接口返回 404，按查询失败提示。
-- **发版**：把 `src-tauri/tauri.conf.json`、`package.json`、`src-tauri/Cargo.toml` 的版本号同步递增，提交后打标签推送（如 `git tag v0.2.0 && git push origin v0.2.0`）。CI 会构建 MSI + NSIS 并附到**草稿 Release**；到 Release 页面确认产物（`*.msi` / `*-setup.exe`）后点发布，旧版本用户下次点「检查更新」即可看到提示。
+- **发版**：把版本号在所有位置同步递增——`src-tauri/tauri.conf.json`、`package.json`、`package-lock.json`（2 处）、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`，以及界面里硬编码的 `src/components/AboutDialog.vue` 与 `src/components/SettingsDialog.vue`——提交后打标签推送（如 `git tag v0.2.0 && git push origin v0.2.0`）。CI 会构建 MSI + NSIS 并附到**草稿 Release**；到 Release 页面确认产物（`*.msi` / `*-setup.exe`）后点发布，旧版本用户下次点「检查更新」即可看到提示。
+- **预发布（beta / rc）**：标签里带 `-`（如 `v0.1.0-beta.1`）时 CI 会把 Release 标记为 pre-release（`ci.yml` 的 `prerelease: ${{ contains(github.ref_name, '-') }}`）；`/releases/latest` 不计入预发布，所以 beta 不会被推送给正式用户。
 
 > - 无需配置任何仓库 Secret；`bundle.createUpdaterArtifacts`、`tauri-plugin-updater` / `tauri-plugin-process` 与 `plugins.updater` 配置均已移除。
 > - 想改回「应用内下载安装」需重新引入 updater 插件、签名密钥与 `latest.json` 链路（见 git 历史与 Tauri 官方 updater 文档）。

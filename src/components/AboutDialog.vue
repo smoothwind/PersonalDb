@@ -15,7 +15,7 @@
     <div class="about">
       <div class="about-logo">PersonalDb</div>
       <div class="about-sub">{{ t('menu.aboutBody') }}</div>
-      <el-tag size="small" effect="plain" class="about-ver">v0.1.0</el-tag>
+      <el-tag size="small" effect="plain" class="about-ver">v0.1.0-beta.1</el-tag>
       <div class="about-stack">
         <el-tag size="small" effect="plain">Tauri 2</el-tag>
         <el-tag size="small" effect="plain">WebView2</el-tag>

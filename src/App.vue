@@ -445,7 +445,7 @@
             {{ t('logs.title') }}<template v-if="logStore.unreadErrors > 0">·{{ logStore.unreadErrors }}</template>
           </span>
           <span class="status-sep">|</span>
-          PersonalDb v0.1.0
+          PersonalDb v0.1.0-beta.1
         </span>
       </el-footer>
 

@@ -154,7 +154,8 @@ jobs:
           releaseName: PersonalDb ${{ github.ref_name }}
           releaseBody: 'PersonalDb ${{ github.ref_name }}（含内置 Oracle/JDBC 桥接）'
           releaseDraft: true
-          prerelease: false
+          # 标签带 `-`（如 v0.1.0-beta.1）视为预发布：/releases/latest 不计入，不会推送给正式用户
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
       # build.rs 对缺失工具链只告警不报错，这里显式拦截，避免发出缺 sidecar 的安装包
       - name: Verify sidecars exist (src-tauri/binaries)

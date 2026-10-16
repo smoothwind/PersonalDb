@@ -696,7 +696,7 @@
   - 404（仓库私有 / 尚无 Release）→ `update.noRelease`；其余非 2xx → `HTTP {status} {statusText}`；网络异常取原文；一律 WARN 落日志，`outcome='error'`。
 - **非模态提示**：状态栏常驻「有新版本 v{version}」（`hasUpdate` = 有新版且未被跳过；点击 `openRelease()` → `opener.openUrl(releaseLink)` 用浏览器打开发布页）+ 帮助菜单「检查更新」红点（`.menu-dot`）；可「不再提示此版本」（状态栏 × → `preferences.skipVersion` → `personaldb.update.skippedVersion`）。另给一次性反馈：已最新 info / 失败 error（带摘要）/ 有新版本 success。
 - **无应用内下载安装**：不需要签名密钥、`.sig`、`latest.json`；`tauri-plugin-updater`、`tauri-plugin-process`（含 `updater:default`、`process:allow-restart` 权限）、`plugins.updater` 配置与 `tauri.updater.conf.json` 均已删除。若要恢复「应用内安装」，需重新引入插件 + 签名密钥 + latest.json 链路。
-- **发布链路（GitHub）**：版本号在 `tauri.conf.json` / `package.json` / `Cargo.toml` 同步递增 → 打 `v*` 标签推送 → CI `bundle` 作业经 `tauri-apps/tauri-action@v1` 构建 MSI + NSIS 并建**草稿** Release（不需要任何 Secret）；确认产物后手动发布，旧版用户下次手动检查即可看到提示。
+- **发布链路（GitHub）**：版本号在所有位置同步递增（`tauri.conf.json` / `package.json` / `package-lock.json`（2 处）/ `Cargo.toml` / `Cargo.lock`，以及界面硬编码的 `App.vue` 状态栏、`AboutDialog.vue`、`SettingsDialog.vue`）→ 打 `v*` 标签推送 → CI `bundle` 作业经 `tauri-apps/tauri-action@v1` 构建 MSI + NSIS 并建**草稿** Release（不需要任何 Secret）；确认产物后手动发布，旧版用户下次手动检查即可看到提示。标签含 `-`（beta / rc，如 `v0.1.0-beta.1`）时 `prerelease: contains(github.ref_name, '-')` 会标记为 pre-release，`/releases/latest` 不计入，故预发布不会推送给正式用户。
 - 前提：仓库可被匿名读取 `api.github.com`（公开仓库）；换仓库需改 `GITHUB_REPO` 常量并同步 README。
 
 ## SPEC-SESSION-3 OceanBase Oracle 会话/锁（OB 兼容视图）
