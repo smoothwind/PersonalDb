@@ -10,6 +10,7 @@ npm run build            # vue-tsc 类型检查 + vite 打包（提交前必跑�
 npm test                 # Vitest 单测（jsdom，含 About 对话框/连接分组回归）
 npm run dev              # 仅前端 Vite 开发服务器
 npm run tauri dev        # 完整桌面应用开发调试
+npm run bundle:all       # 打包 MSI + NSIS（CI bundle 作业用；本地需 Go + Maven + JRE 21）
 
 # Rust（src-tauri 目录）
 cargo check                        # 后端类型检查（默认已含 oracle 特性，提交前必跑）
@@ -17,7 +18,7 @@ cargo check --no-default-features  # 排除 oracle 的路径检查（改动 cfg 
 cargo fix --lib --allow-dirty      # 自动修复 warning
 ```
 
-构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。
+构建必须同时通过：`npm run build` 与 `cargo check`（默认 + `--no-default-features` 两种配置均需零 error 零 warning）。CI（`.github/workflows/ci.yml`）为 `check` + `bundle` 两个作业：push（main/master、`v*` 标签）与 PR 均触发；`bundle` 在 windows-latest 上经 Go/Maven 产出 MSI + NSIS 并上传 Artifact，`v*` 标签附到草稿 Release。
 
 ## 架构
 

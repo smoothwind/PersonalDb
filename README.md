@@ -50,9 +50,21 @@ npm run tauri dev    # 开发调试（热更新）
 npm run build        # 类型检查 + 前端打包
 npm run bundle       # 打包安装包（MSI，输出 target/release/bundle/msi）
 npm run bundle:nsis  # 打包 NSIS 安装器（需 NSIS 工具缓存）
+npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 ```
 
 > 打包首次会下载 WiX/NSIS 工具；若 GitHub 受限，可将工具预置到 `%LOCALAPPDATA%\tauri\WixTools314`（MSI）等缓存目录后再执行。
+
+### GitHub Actions 构建
+
+`.github/workflows/ci.yml` 含两个作业，push（main/master 与 `v*` 标签）与 PR 都会触发：
+
+| 作业 | 内容 |
+| ---- | ---- |
+| `check` | i18n 双端 key 校验 → 前端 `vue-tsc + vite` 构建 → vitest → `cargo check`（默认与 `--no-default-features`）→ `cargo test --lib` |
+| `bundle` | `needs: check` 通过后，在 windows-latest 上跑 `npm run bundle:all`，校验 `src-tauri/binaries/` 里的 sidecar（Go/Maven 缺失会直接失败），产出 **MSI + NSIS** 并作为 Artifacts 上传；推送 `v*` 标签时另附到**草稿 Release**（自动发布需把 `draft` 改为 `false`） |
+
+运行环境由流水线自带：Node 20、Rust stable（edition 2024 需 ≥1.85）、Go 1.22、Temurin JDK 21、镜像预装 Maven 3.9。可用 Actions 页面 **Run workflow** 手动触发。
 
 ### Oracle / OceanBase Oracle 支持
 

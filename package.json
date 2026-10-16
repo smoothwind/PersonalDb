@@ -10,6 +10,7 @@
     "tauri:dev": "tauri dev",
     "bundle": "tauri build --bundles msi",
     "bundle:nsis": "tauri build --bundles nsis",
+    "bundle:all": "tauri build --bundles msi,nsis",
     "check:i18n": "node --experimental-strip-types scripts/check-i18n.mts",
     "test": "vitest run",
     "test:watch": "vitest",
