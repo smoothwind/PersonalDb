@@ -1,5 +1,7 @@
 # PersonalDb
 
+[![CI](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml)
+
 基于 **Tauri 2 + WebView2 + Vue 3** 的多数据库客户端工具（Windows 桌面应用）。
 
 > 项目主页 / 下载页：<https://smoothwind.github.io/PersonalDb/>（GitHub Pages；源文件在 `site/`，由 `.github/workflows/pages.yml` 部署，需在 Settings → Pages → Source 选择 **GitHub Actions**）
