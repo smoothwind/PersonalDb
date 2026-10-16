@@ -1,6 +1,6 @@
 # PersonalDb
 
-[![CI](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml)
+[![CI](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/smoothwind/PersonalDb/actions/workflows/ci.yml) [![Pages](https://github.com/smoothwind/PersonalDb/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/smoothwind/PersonalDb/actions/workflows/pages.yml)
 
 基于 **Tauri 2 + WebView2 + Vue 3** 的多数据库客户端工具（Windows 桌面应用）。
 
