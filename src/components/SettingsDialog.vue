@@ -552,15 +552,9 @@
             <div class="about-stack">Tauri 2 · WebView2 · Vue 3 · TypeScript · Rust</div>
           </div>
 
-          <!-- 自动更新（检测逻辑见 docs/specifications.md SPEC-DEV-2） -->
+          <!-- 更新提示（查 GitHub Releases，无自动检测；规格见 docs/specifications.md SPEC-DEV-2） -->
           <div class="pref-section">{{ t('settings.updateSection') }}</div>
           <el-form label-width="140px" size="small">
-            <el-form-item :label="t('settings.updateAutoCheck')">
-              <el-switch
-                :model-value="prefs.update.autoCheck"
-                @update:model-value="(v: string | number | boolean) => prefs.updateUpdatePrefs({ autoCheck: Boolean(v) })"
-              />
-            </el-form-item>
             <el-form-item v-if="prefs.update.skippedVersion" :label="t('settings.updateSkipped')">
               <span class="update-skipped">{{ prefs.update.skippedVersion }}</span>
               <el-button size="small" link type="primary" @click="prefs.clearSkippedVersion()">
@@ -571,17 +565,23 @@
               <el-button size="small" :loading="updateStore.busy" @click="updateStore.runManualCheck()">
                 {{ t('update.check') }}
               </el-button>
-              <span v-if="updateStore.phase === 'downloading'" class="update-hint">
-                {{ updateStore.progressLabel }}
-              </span>
-              <span v-else-if="updateStore.hasUpdate" class="update-hint">
+              <el-button
+                v-if="updateStore.hasUpdate"
+                size="small"
+                link
+                type="primary"
+                @click="updateStore.openRelease()"
+              >
+                {{ t('update.openRelease') }}
+              </el-button>
+              <span v-if="updateStore.hasUpdate" class="update-hint">
                 {{ t('update.availableHint', { version: updateStore.version }) }}
               </span>
-              <span v-else-if="!updateStore.configured" class="update-hint">
-                {{ t('update.notConfigured') }}
+              <span v-else-if="updateStore.outcome === 'latest'" class="update-hint">
+                {{ t('update.latest') }}
               </span>
-              <span v-else-if="updateStore.phase === 'installed'" class="update-hint">
-                {{ t('update.installedDesc') }}
+              <span v-else-if="updateStore.outcome === 'error'" class="update-hint">
+                {{ t('update.checkFailed', { msg: updateStore.lastError }) }}
               </span>
             </el-form-item>
           </el-form>
@@ -904,7 +904,7 @@ function openStorageDir(key: string): void {
   font-family: Consolas, monospace;
 }
 
-/* 自动更新：状态提示与已跳过版本 */
+/* 更新提示：状态提示与已跳过版本 */
 .update-hint {
   margin-left: 10px;
   font-size: 12px;

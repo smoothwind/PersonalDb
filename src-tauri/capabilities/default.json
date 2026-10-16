@@ -16,8 +16,6 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "dialog:allow-confirm",
-    "log:default",
-    "updater:default",
-    "process:allow-restart"
+    "log:default"
   ]
 }

@@ -50,13 +50,5 @@
       "icons/icon.ico"
     ],
     "resources": ["binaries/*"]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": [
-        "https://github.com/smoothwind/PersonalDb/releases/latest/download/latest.json"
-      ]
-    }
   }
 }

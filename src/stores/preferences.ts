@@ -71,10 +71,8 @@ export interface UiPrefs {
   leftPanelMode: 'tabs' | 'stack'
 }
 
-/** 自动更新检测偏好（仅打包版生效，见 docs/specifications.md SPEC-DEV-2） */
+/** 更新提示偏好（无自动检测，仅手动「检查更新」；见 docs/specifications.md SPEC-DEV-2） */
 export interface UpdatePrefs {
-  /** 启动后自动静默检测更新 */
-  autoCheck: boolean
   /** 已跳过的版本号（不再提示，空 = 不跳过） */
   skippedVersion: string
 }
@@ -279,7 +277,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     loadPrefs<FormatPrefs>(FORMAT_KEY, defaultFormatPrefs()),
   )
   const update = reactive<UpdatePrefs>(
-    loadPrefs<UpdatePrefs>(UPDATE_KEY, { autoCheck: true, skippedVersion: '' }),
+    loadPrefs<UpdatePrefs>(UPDATE_KEY, { skippedVersion: '' }),
   )
   /** 快捷键覆盖（actionKey → 组合）；未覆盖项用默认值 */
   const shortcuts = ref<Record<string, string>>(

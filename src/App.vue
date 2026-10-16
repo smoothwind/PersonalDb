@@ -145,7 +145,7 @@
           <el-menu-item index="check-update">
             <el-icon class="menu-icon"><component :is="MENU_ICONS.update" /></el-icon>
             <span class="menu-text">{{ t('update.check') }}</span>
-            <!-- 自动检测命中新版本：非模态红点，点开才进入下载确认 -->
+            <!-- 「检查更新」命中新版本：非模态红点 -->
             <span v-if="updateStore.hasUpdate" class="menu-dot" />
           </el-menu-item>
         </el-sub-menu>
@@ -404,23 +404,16 @@
           </el-button>
         </template>
         <span class="status-right">
-          <!-- 更新检测：下载中显示进度；有新版本则常驻非模态入口（可跳过该版本） -->
-          <template v-if="updateStore.phase === 'downloading'">
-            <span class="status-update">
-              <el-icon><component :is="MENU_ICONS.update" /></el-icon>
-              {{ updateStore.progressLabel }}
-            </span>
-            <span class="status-sep">|</span>
-          </template>
-          <template v-else-if="updateStore.hasUpdate">
+          <!-- 更新提示：查询命中新版本后常驻非模态入口（点击打开发布页，可跳过该版本） -->
+          <template v-if="updateStore.hasUpdate">
             <span
               class="status-update is-actionable"
               role="button"
               tabindex="0"
-              :title="t('update.availableHint', { version: updateStore.version })"
-              @click="updateStore.promptInstall()"
-              @keydown.enter="updateStore.promptInstall()"
-              @keydown.space.prevent="updateStore.promptInstall()"
+              :title="t('update.openRelease')"
+              @click="updateStore.openRelease()"
+              @keydown.enter="updateStore.openRelease()"
+              @keydown.space.prevent="updateStore.openRelease()"
             >
               <el-icon><component :is="MENU_ICONS.update" /></el-icon>
               {{ t('update.availableHint', { version: updateStore.version }) }}
@@ -728,12 +721,6 @@ onMounted(() => {
   invoke('app_ready').catch(() => { /* dev 无 splash 时忽略 */ })
   // 首次启动漫游引导
   maybeAutoTour()
-  // 自动更新检测：仅打包版、且用户未关闭时，延迟静默检查（失败仅记日志，不打扰）
-  if (import.meta.env.PROD && prefs.update.autoCheck) {
-    window.setTimeout(() => {
-      void updateStore.checkForUpdate(true)
-    }, 5000)
-  }
   window.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -816,7 +803,7 @@ function openSessions(): void {
   })
 }
 
-/** 检查更新（手动入口：帮助菜单；未配置端点/公钥时提示未启用） */
+/** 检查更新（手动入口：帮助菜单；查 GitHub Releases 是否有新构建） */
 async function runUpdateCheck(): Promise<void> {
   await updateStore.runManualCheck()
 }

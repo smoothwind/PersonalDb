@@ -1,191 +1,144 @@
 /**
- * 自动更新检测（tauri-plugin-updater）。
+ * 更新提示（查 GitHub Releases 元数据，不做签名校验与应用内安装）。
  *
- * 两种入口：
- * - 启动自动检测：`checkForUpdate(true)`，静默、失败仅记日志；命中新版本后由状态栏/帮助菜单
- *   给出**非模态**提示（不打断操作），点击才进入确认与下载。
- * - 手动检测：`runManualCheck()`，帮助菜单「检查更新」与首选项按钮共用，带对话框反馈。
+ * **无自动检测**：只在用户手动触发时发起请求——
+ * - 帮助菜单「检查更新」（`runManualCheck`）
+ * - 首选项「关于 → 更新提示 → 检查更新」
  *
- * 未配置更新端点/签名公钥时插件会抛错 → 归类为「未启用」，静默检测不做任何打扰。
- * 启用步骤（公钥、端点、CI 签名）见 docs/specifications.md SPEC-DEV-2。
+ * 请求 `repos/{owner}/{repo}/releases/latest`（**草稿与预发布不计入**），用
+ * `utils/version.ts#compareVersions` 与当前应用版本（`getVersion()`）比较；命中更高版本后
+ * 给出**非模态**提示：状态栏常驻入口（点击用浏览器打开发布页）+ 帮助菜单红点，
+ * 可「不再提示此版本」（`personaldb.update`）。
+ *
+ * 仓库为私有或尚无 Release 时接口返回 404 → 按查询失败提示。
+ * 规格见 docs/specifications.md SPEC-DEV-2。
  */
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { ElMessage } from 'element-plus'
+import { getVersion } from '@tauri-apps/api/app'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
+import { compareVersions } from '../utils/version'
 import { usePreferencesStore } from './preferences'
+
+/** 发布仓库（与 README/发布流程一致，换仓库时同步修改） */
+export const GITHUB_REPO = 'smoothwind/PersonalDb'
+/** 最近一次**已发布**的 Release 接口（草稿/预发布不返回） */
+const LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
+/** 发布列表页（无具体 Release 时的兜底入口） */
+const RELEASES_PAGE = `https://github.com/${GITHUB_REPO}/releases`
+
+/** 检测状态：idle=未检测 / busy=查询中 / update=有新版 / latest=已最新 / error=查询失败 */
+export type CheckOutcome = 'idle' | 'busy' | 'update' | 'latest' | 'error'
+
+/** GitHub Release 中本功能用到的字段 */
+interface ReleaseInfo {
+  tag_name?: string
+  html_url?: string
+}
 
 /** 非组件环境取文案（约定：store/工具用 i18n.global.t） */
 function t(key: string, named?: Record<string, unknown>): string {
   return i18n.global.t(key, named ?? {})
 }
 
-export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'installed'
-/** update=有新版 / latest=已最新 / disabled=未启用 / error=检测失败 / busy=进行中 */
-export type CheckOutcome = 'update' | 'latest' | 'disabled' | 'error' | 'busy'
-
-/** 插件在端点/公钥缺失时抛出的错误文案 → 与网络失败区分，避免误导提示 */
-function looksUnconfigured(message: string): boolean {
-  const m = message.toLowerCase()
-  return ['endpoint', 'pubkey', 'public key', 'not configured'].some((k) => m.includes(k))
-}
-
 export const useUpdateStore = defineStore('update', () => {
   const prefs = usePreferencesStore()
 
-  const phase = ref<UpdatePhase>('idle')
-  /** 可用新版本号（空 = 无） */
+  /** 最近一次检测状态 */
+  const outcome = ref<CheckOutcome>('idle')
+  /** 查询到的可用新版本号（空 = 无） */
   const version = ref('')
-  /** 新版本更新说明（来自 latest.json 的 notes） */
-  const notes = ref('')
-  /** 下载进度 0-100；-1 表示服务端未返回总大小 */
-  const progress = ref(0)
-  /** false = 端点/公钥未配置（启动检测静默跳过，不打扰用户） */
-  const configured = ref(true)
+  /** 该版本对应的发布页地址 */
+  const releaseUrl = ref('')
+  /** 最近一次查询失败原因（空 = 无） */
   const lastError = ref('')
+  /** 当前应用版本（首次查询时读取，取自 tauri.conf.json） */
+  const currentVersion = ref('')
 
-  /** 待安装的更新句柄：含内部资源，不参与响应式 */
-  let pending: Update | null = null
-
-  const busy = computed(() => phase.value === 'checking' || phase.value === 'downloading')
+  const busy = computed(() => outcome.value === 'busy')
   /** 是否有值得提示的新版本（用户已跳过的版本不再打扰） */
   const hasUpdate = computed(
     () => !!version.value && prefs.update.skippedVersion !== version.value,
   )
-  /** 下载进度文案：有总大小时显示百分比，否则只显示「正在下载」 */
-  const progressLabel = computed(() =>
-    progress.value >= 0 ? t('update.progress', { percent: progress.value }) : t('update.downloading'),
-  )
+  /** 待打开的地址：有新版本 → 该版本 Release；否则 → 发布列表页 */
+  const releaseLink = computed(() => releaseUrl.value || RELEASES_PAGE)
 
-  /** 检测更新；silent=true 用于启动自动检测（不弹窗、失败仅记日志） */
-  async function checkForUpdate(silent = false): Promise<CheckOutcome> {
+  /** 查 GitHub 是否有更高的已发布版本（只手动触发，失败不重试） */
+  async function checkForUpdate(): Promise<CheckOutcome> {
     if (busy.value) return 'busy'
-    phase.value = 'checking'
+    outcome.value = 'busy'
     lastError.value = ''
     try {
-      const found = await check()
-      phase.value = 'idle'
-      configured.value = true
-      if (!found) {
-        version.value = ''
-        notes.value = ''
-        if (!silent) logger.info('[updater] already up to date')
-        return 'latest'
-      }
-      pending = found
-      version.value = found.version
-      notes.value = found.body ?? ''
-      logger.info(`[updater] available: v${found.version} (current v${found.currentVersion})`)
-      return 'update'
-    } catch (e) {
-      phase.value = 'idle'
-      lastError.value = String(e)
-      configured.value = !looksUnconfigured(lastError.value)
-      logger.warn(`[updater] check failed: ${lastError.value}`)
-      return configured.value ? 'error' : 'disabled'
-    }
-  }
-
-  /** 手动检测（帮助菜单 / 首选项）：给出一次性反馈，命中新版本则进入确认流程 */
-  async function runManualCheck(): Promise<void> {
-    const outcome = await checkForUpdate(false)
-    if (outcome === 'latest') ElMessage.info(t('update.latest'))
-    else if (outcome === 'disabled') ElMessage.info(t('update.notConfigured'))
-    else if (outcome === 'error') ElMessage.error(t('update.checkFailed', { msg: lastError.value }))
-    else if (outcome === 'update') await promptInstall()
-  }
-
-  /** 下载并安装（进度写入 progress），返回是否安装完成 */
-  async function downloadAndInstall(): Promise<boolean> {
-    if (!pending) return false
-    phase.value = 'downloading'
-    progress.value = 0
-    let total = 0
-    let received = 0
-    try {
-      await pending.downloadAndInstall((ev: DownloadEvent) => {
-        if (ev.event === 'Started') {
-          total = ev.data.contentLength ?? 0
-          progress.value = total > 0 ? 0 : -1
-        } else if (ev.event === 'Progress') {
-          received += ev.data.chunkLength
-          progress.value = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : -1
-        } else {
-          progress.value = 100
-        }
+      if (!currentVersion.value) currentVersion.value = await getVersion()
+      const res = await fetch(LATEST_RELEASE_API, {
+        headers: { Accept: 'application/vnd.github+json' },
       })
-      phase.value = 'installed'
-      logger.info(`[updater] v${version.value} installed, restart required`)
-      // 已安装：清空「有新版本」状态，状态栏提示随之消失（重启后即为新版本）
-      pending = null
-      version.value = ''
-      notes.value = ''
-      progress.value = 0
-      return true
+      if (res.status === 404) throw new Error(t('update.noRelease'))
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+      const info = (await res.json()) as ReleaseInfo
+      const tag = (info.tag_name ?? '').trim()
+      if (!tag) throw new Error(t('update.noRelease'))
+      if (compareVersions(tag, currentVersion.value) > 0) {
+        version.value = tag.replace(/^v/i, '')
+        releaseUrl.value = info.html_url ?? RELEASES_PAGE
+        outcome.value = 'update'
+        logger.info(`[update] available: ${tag} (current v${currentVersion.value})`)
+      } else {
+        version.value = ''
+        releaseUrl.value = ''
+        outcome.value = 'latest'
+        logger.info(`[update] up to date: latest ${tag}, current v${currentVersion.value}`)
+      }
+      return outcome.value
     } catch (e) {
-      phase.value = 'idle'
-      lastError.value = String(e)
-      logger.error(`[updater] download/install failed: ${lastError.value}`)
-      ElMessage.error(t('update.downloadFailed', { msg: lastError.value }))
-      return false
+      version.value = ''
+      releaseUrl.value = ''
+      lastError.value = e instanceof Error ? e.message : String(e)
+      outcome.value = 'error'
+      logger.warn(`[update] check failed: ${lastError.value}`)
+      return 'error'
     }
   }
 
-  /** 确认 → 下载安装 → 询问重启（非模态提示点击后也走这里） */
-  async function promptInstall(): Promise<void> {
-    if (!pending || busy.value) return
-    const go = await ElMessageBox.confirm(
-      t('update.availableDesc', {
-        version: version.value,
-        notes: notes.value.trim() || t('update.noNotes'),
-      }),
-      t('update.available'),
-      {
-        confirmButtonText: t('update.download'),
-        cancelButtonText: t('common.cancel'),
-        type: 'info',
-      },
-    )
-      .then(() => true)
-      .catch(() => false)
-    if (!go) return
-    if (!(await downloadAndInstall())) return
-    const restart = await ElMessageBox.confirm(
-      t('update.installedDesc'),
-      t('update.installed'),
-      {
-        confirmButtonText: t('update.restart'),
-        cancelButtonText: t('update.later'),
-        type: 'success',
-      },
-    )
-      .then(() => true)
-      .catch(() => false)
-    if (restart) await relaunch()
+  /** 手动检测（帮助菜单 / 首选项）：一次性反馈，命中新版本后由状态栏常驻提示 */
+  async function runManualCheck(): Promise<void> {
+    const result = await checkForUpdate()
+    if (result === 'latest') ElMessage.info(t('update.latest'))
+    else if (result === 'error') ElMessage.error(t('update.checkFailed', { msg: lastError.value }))
+    else if (result === 'update') ElMessage.success(t('update.availableToast', { version: version.value }))
   }
 
-  /** 不再提示当前版本（非模态提示上的关闭按钮） */
+  /** 在浏览器打开发布页（有新版本 → 该版本 Release；否则 → 发布列表） */
+  async function openRelease(): Promise<void> {
+    try {
+      await openUrl(releaseLink.value)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`[update] open release page failed: ${msg}`)
+      ElMessage.error(t('update.openFailed', { msg }))
+    }
+  }
+
+  /** 不再提示当前版本（状态栏提示上的关闭按钮） */
   function skipCurrentVersion(): void {
     if (version.value) prefs.skipVersion(version.value)
   }
 
   return {
-    phase,
+    outcome,
     version,
-    notes,
-    progress,
-    configured,
+    releaseUrl,
     lastError,
+    currentVersion,
     busy,
     hasUpdate,
-    progressLabel,
+    releaseLink,
     checkForUpdate,
     runManualCheck,
-    downloadAndInstall,
-    promptInstall,
+    openRelease,
     skipCurrentVersion,
   }
 })
