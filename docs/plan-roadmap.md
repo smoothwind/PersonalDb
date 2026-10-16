@@ -55,7 +55,7 @@
 2. **历史 SQLite 化**：`history.rs`（WAL，500 条上限，类别 History）；旧 localStorage 一次性迁移；面板搜索走 SQL；文件库失败回退内存库。
 3. **多结果集**：语句分割（字符串/注释感知，Oracle 跳过）逐条执行；segmented「结果 N」切换；部分成功保留已得结果。
 4. **网格撤销/重做**：快照栈 50，覆盖五类编辑变更，Ctrl+Z/Y + 工具栏按钮。
-5. **自动更新+签名**：updater/process 插件 + 「检查更新」菜单 + 签名密钥已生成（`%USERPROFILE%\.personaldb\tauri-updater.key`）；端点未配置时提示未启用，启用步骤见 SPEC-DEV-2。
+5. **自动更新检测**：`stores/update.ts` 统一检测——打包版启动延迟 5s 静默检测，命中新版本只在**状态栏/帮助菜单**给非模态提示（可「不再提示此版本」，首选项可关）；手动入口=帮助菜单「检查更新」/首选项按钮；发布链路（签名 + `latest.json` + tauri-action）见 SPEC-DEV-2，**待生成密钥后填 `pubkey` 与仓库 Secrets**。
 
 ### 第五批：会话管理深度增强（已落地）
 
