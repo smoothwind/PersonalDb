@@ -113,6 +113,7 @@ import WelcomePane from '../WelcomePane.vue'
 import ContextMenu, { type CtxMenuItem } from '../ContextMenu.vue'
 import { objectIcon } from '../../utils/objectIcons'
 import { connColor } from '../../utils/color'
+import { startWindowDrag } from '../../utils/drag'
 import { useTabsStore, type QueryTab } from '../../stores/tabs'
 import { useConnectionStore } from '../../stores/connections'
 
@@ -200,18 +201,14 @@ function startSplitDrag(e: MouseEvent): void {
   if (!container) return
   const rect = container.getBoundingClientRect()
   const dir = splitDir.value
-  const onMove = (ev: MouseEvent): void => {
-    const pct =
-      dir === 'h' ? ((ev.clientX - rect.left) / rect.width) * 100 : ((ev.clientY - rect.top) / rect.height) * 100
-    splitPct.value = Math.min(80, Math.max(20, pct))
-  }
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-    localStorage.setItem('personaldb.splitPct', String(Math.round(splitPct.value)))
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  startWindowDrag(
+    (ev) => {
+      const pct =
+        dir === 'h' ? ((ev.clientX - rect.left) / rect.width) * 100 : ((ev.clientY - rect.top) / rect.height) * 100
+      splitPct.value = Math.min(80, Math.max(20, pct))
+    },
+    () => localStorage.setItem('personaldb.splitPct', String(Math.round(splitPct.value))),
+  )
 }
 
 function onRemoveTab(name: string | number): void {

@@ -43,22 +43,6 @@ pub struct DmlRequest {
     pub deletes: Vec<Vec<CellValue>>,
 }
 
-fn parse_sem(s: &str) -> SemanticType {
-    match s {
-        "date" => SemanticType::Date,
-        "datetime" => SemanticType::DateTime,
-        "time" => SemanticType::Time,
-        "binary" => SemanticType::Binary,
-        "json" => SemanticType::Json,
-        "longtext" => SemanticType::LongText,
-        "number" => SemanticType::Number,
-        "decimal" => SemanticType::Decimal,
-        "bool" => SemanticType::Bool,
-        "uuid" => SemanticType::Uuid,
-        _ => SemanticType::Text,
-    }
-}
-
 /// 生成 DML 语句列表（INSERT / UPDATE / DELETE）
 pub fn build_dml(req: &DmlRequest) -> DbResult<Vec<String>> {
     let dialect = build(req.kind)?;
@@ -71,7 +55,7 @@ pub fn build_dml(req: &DmlRequest) -> DbResult<Vec<String>> {
         req.columns
             .get(i)
             .and_then(|c| c.semantic.as_deref())
-            .map(parse_sem)
+            .map(|l| SemanticType::from_label(l, SemanticType::Text))
             .unwrap_or(SemanticType::Text)
     };
     let lit = |v: &CellValue, i: usize| dialect.dml_literal(v, sem(i));

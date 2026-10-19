@@ -532,20 +532,7 @@ fn format_ident(name: &str, opts: &SqlExportOptions, dialect: &dyn super::dialec
 }
 
 fn parse_sem(s: &str) -> crate::db::types::SemanticType {
-    use crate::db::types::SemanticType as S;
-    match s {
-        "date" => S::Date,
-        "datetime" => S::DateTime,
-        "time" => S::Time,
-        "binary" => S::Binary,
-        "json" => S::Json,
-        "longtext" => S::LongText,
-        "number" => S::Number,
-        "decimal" => S::Decimal,
-        "bool" => S::Bool,
-        "uuid" => S::Uuid,
-        _ => S::Text,
-    }
+    crate::db::types::SemanticType::from_label(s, crate::db::types::SemanticType::Text)
 }
 
 fn value_literal(

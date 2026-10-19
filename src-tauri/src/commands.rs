@@ -328,9 +328,37 @@ pub fn db_build_dml(req: crate::db::dml::DmlRequest) -> DbResult<Vec<String>> {
     crate::db::dml::build_dml(&req)
 }
 
+/// 是否为存储目录内的敏感数据文件（连接/分组/密文配置/工作区/快捷指令/驱动/历史库）。
+/// 前端若被注入，这两个命令等同于任意文件读写——禁止触碰受保护数据防凭据/配置篡改。
+fn is_storage_guarded_file(path: &str) -> bool {
+    let Ok(target) = std::fs::canonicalize(path) else {
+        return false;
+    };
+    use StorageCategory::*;
+    [
+        Connections,
+        Snippets,
+        Workspaces,
+        Drivers,
+        History,
+    ]
+    .into_iter()
+    .any(|c| {
+        c.file_names().iter().any(|name| {
+            storage::file_path(c, name)
+                .ok()
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .is_some_and(|p| p == target)
+        })
+    })
+}
+
 /// 保存文本到文件（SQL 脚本另存等）
 #[tauri::command]
 pub fn save_text_file(path: String, content: String) -> DbResult<()> {
+    if is_storage_guarded_file(&path) {
+        return Err(AppError::General("拒绝写入受保护的存储数据文件".into()));
+    }
     std::fs::write(&path, content)?;
     Ok(())
 }
@@ -338,6 +366,9 @@ pub fn save_text_file(path: String, content: String) -> DbResult<()> {
 /// 读取文本文件（SQL 脚本打开等）
 #[tauri::command]
 pub fn read_text_file(path: String) -> DbResult<String> {
+    if is_storage_guarded_file(&path) {
+        return Err(AppError::General("拒绝读取受保护的存储数据文件".into()));
+    }
     Ok(std::fs::read_to_string(&path)?)
 }
 

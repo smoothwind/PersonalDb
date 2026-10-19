@@ -32,6 +32,31 @@ pub enum BridgeKind {
     ObJdbc,
 }
 
+/// 惰性建立桥接进程：命中缓存直接复用，否则执行冷启动（spawn + connect）
+pub(crate) async fn with_ensured<T>(
+    mutex: &tokio::sync::Mutex<Option<Bridge>>,
+    cold_start: impl AsyncFnOnce() -> DbResult<Bridge>,
+    f: impl AsyncFnOnce(&mut Bridge) -> DbResult<T>,
+) -> DbResult<T> {
+    let mut guard = mutex.lock().await;
+    if guard.is_none() {
+        *guard = Some(cold_start().await?);
+    }
+    let b = guard.as_mut().expect("bridge just ensured");
+    f(b).await
+}
+
+/// Drop 兜底：try_lock 成功则取走 Bridge 投递优雅关闭；争用时交由 kill_on_drop 兜底
+pub(crate) fn shutdown_on_drop(mutex: &tokio::sync::Mutex<Option<Bridge>>) {
+    if let Ok(mut guard) = mutex.try_lock()
+        && let Some(mut b) = guard.take()
+            && let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    b.shutdown().await;
+                });
+            }
+}
+
 fn oracle_exe_name() -> &'static str {
     if cfg!(windows) {
         "oracle-bridge.exe"

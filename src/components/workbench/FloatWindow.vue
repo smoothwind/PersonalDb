@@ -48,6 +48,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Minus } from '@element-plus/icons-vue'
 import { objectIcon } from '../../utils/objectIcons'
+import { startWindowDrag } from '../../utils/drag'
 import { useLayoutStore, type PanelId } from '../../stores/layout'
 
 const props = defineProps<{
@@ -65,33 +66,21 @@ function startMove(e: MouseEvent): void {
   const g = { ...geom.value }
   const startX = e.clientX
   const startY = e.clientY
-  const onMove = (ev: MouseEvent): void => {
-    layout.setGeom(props.panel, { x: g.x + (ev.clientX - startX), y: g.y + (ev.clientY - startY) })
-  }
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  startWindowDrag((ev) =>
+    layout.setGeom(props.panel, { x: g.x + (ev.clientX - startX), y: g.y + (ev.clientY - startY) }),
+  )
 }
 
 function startResize(e: MouseEvent, edge: 'right' | 'bottom' | 'br'): void {
   const g = { ...geom.value }
   const startX = e.clientX
   const startY = e.clientY
-  const onMove = (ev: MouseEvent): void => {
+  startWindowDrag((ev) => {
     const dx = ev.clientX - startX
     const dy = ev.clientY - startY
     if (edge === 'right' || edge === 'br') layout.setGeom(props.panel, { w: g.w + dx })
     if (edge === 'bottom' || edge === 'br') layout.setGeom(props.panel, { h: g.h + dy })
-  }
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  })
 }
 </script>
 

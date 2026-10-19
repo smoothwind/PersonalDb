@@ -736,6 +736,7 @@ import ValueRuleEditor from './ValueRuleEditor.vue'
 import { formatSql } from '../utils/sqlFormat'
 import { onAppCommand } from '../utils/commands'
 import { cellToText, copyText } from '../utils/clipboard'
+import { startWindowDrag } from '../utils/drag'
 import { dbExplain, dbRegistry, exportResultRows, dbExecute, dbListIndexes, dbSetAutocommit, dbCommit, dbRollback, dbBuildDml, saveTextFile, readTextFile } from '../api/db'
 import type { RowsExportFormat, SqlExportOptions, DmlRequest } from '../api/db'
 import { useWorkspaceStore } from '../stores/workspaces'
@@ -905,16 +906,12 @@ function startEditorDrag(e: MouseEvent): void {
   e.preventDefault()
   const startY = e.clientY
   const startH = editorWrapHeight.value
-  const onMove = (ev: MouseEvent): void => {
-    editorWrapHeight.value = Math.min(700, Math.max(80, startH + (ev.clientY - startY)))
-  }
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-    localStorage.setItem(EDITOR_H_KEY, String(editorWrapHeight.value))
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  startWindowDrag(
+    (ev) => {
+      editorWrapHeight.value = Math.min(700, Math.max(80, startH + (ev.clientY - startY)))
+    },
+    () => localStorage.setItem(EDITOR_H_KEY, String(editorWrapHeight.value)),
+  )
 }
 
 /** 单元格复制：选中 + 右键菜单 + Ctrl+C */

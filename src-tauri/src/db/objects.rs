@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::types::{IndexInfo, RoutineParam};
+
 /// 浏览器中的对象类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -90,4 +92,53 @@ pub struct CatalogQuery {
     pub comment_index: Option<usize>,
     /// 状态所在列索引（None 表示该方言/对象无状态概念）
     pub status_index: Option<usize>,
+}
+
+/// 将按索引名有序的行聚合为 IndexInfo（相邻同名归并）。
+/// meta 返回 (索引名, 是否唯一, 是否主键)，column 返回列名。
+pub fn aggregate_index_rows<T>(
+    rows: impl IntoIterator<Item = T>,
+    mut meta: impl FnMut(&T) -> (String, bool, bool),
+    mut column: impl FnMut(&T) -> String,
+) -> Vec<IndexInfo> {
+    let mut out: Vec<IndexInfo> = Vec::new();
+    for r in rows {
+        let (name, unique, primary) = meta(&r);
+        let col = column(&r);
+        match out.last_mut() {
+            Some(last) if last.name == name => last.columns.push(col),
+            _ => out.push(IndexInfo { name, columns: vec![col], unique, primary }),
+        }
+    }
+    out
+}
+
+/// Oracle 系 arguments 行 → (参数列表, 函数返回类型)。
+/// 列序：0=argument_name 1=in_out 2=data_type 3=position；
+/// 无名参数且 position<=0 视为函数返回值（存储过程无返回值行，return_type 为 None）。
+pub fn parse_routine_arguments<T>(
+    rows: impl IntoIterator<Item = T>,
+    mut col: impl FnMut(&T, usize) -> Option<String>,
+) -> (Vec<RoutineParam>, Option<String>) {
+    let mut params: Vec<RoutineParam> = Vec::new();
+    let mut return_type: Option<String> = None;
+    for r in rows {
+        let arg_name = col(&r, 0);
+        if arg_name.is_none() {
+            // 无名参数：position 0 为函数返回值（负数防御无效行）
+            let position = col(&r, 3)
+                .and_then(|p| p.trim().parse::<i32>().ok())
+                .unwrap_or(-1);
+            if position <= 0 {
+                return_type = col(&r, 2);
+            }
+        } else {
+            params.push(RoutineParam {
+                name: arg_name,
+                mode: col(&r, 1).filter(|m| !m.is_empty()).unwrap_or_else(|| "IN".into()),
+                data_type: col(&r, 2).unwrap_or_default(),
+            });
+        }
+    }
+    (params, return_type)
 }

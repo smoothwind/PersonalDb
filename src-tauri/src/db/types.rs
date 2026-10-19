@@ -135,6 +135,26 @@ pub enum SemanticType {
     Unknown,
 }
 
+impl SemanticType {
+    /// 语义标签（前端/桥接）→ 枚举；未识别值回退 fallback
+    pub fn from_label(s: &str, fallback: SemanticType) -> Self {
+        match s {
+            "text" => SemanticType::Text,
+            "longtext" => SemanticType::LongText,
+            "json" => SemanticType::Json,
+            "binary" => SemanticType::Binary,
+            "date" => SemanticType::Date,
+            "datetime" => SemanticType::DateTime,
+            "time" => SemanticType::Time,
+            "number" => SemanticType::Number,
+            "decimal" => SemanticType::Decimal,
+            "bool" => SemanticType::Bool,
+            "uuid" => SemanticType::Uuid,
+            _ => fallback,
+        }
+    }
+}
+
 /// 单元格值：直接映射为 JSON 标量（Binary 为 base64 字符串）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -146,6 +166,18 @@ pub enum CellValue {
     Float(f64),
     Text(String),
     Binary(String),
+}
+
+/// 目录/元数据场景的单元格文本化（数字转十进制文本，布尔转 1/0，Null → None）
+pub fn cell_to_text(v: &CellValue) -> Option<String> {
+    match v {
+        CellValue::Null => None,
+        CellValue::Text(s) | CellValue::Binary(s) => Some(s.clone()),
+        CellValue::Int(i) => Some(i.to_string()),
+        CellValue::UInt(u) => Some(u.to_string()),
+        CellValue::Float(f) => Some(f.to_string()),
+        CellValue::Bool(b) => Some(if *b { "1".into() } else { "0".into() }),
+    }
 }
 
 /// SQL 执行结果

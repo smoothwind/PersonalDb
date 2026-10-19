@@ -13,26 +13,23 @@ use super::bridge_driver::parse_query_result;
 use super::dialect::{self, SqlDialect};
 use super::driver::DatabaseDriver;
 use super::jdbc_driver::{self, JdbcDriver};
-use super::objects::{CatalogQuery, DbObjectType, ObjectInfo};
+use super::objects::{aggregate_index_rows, CatalogQuery, DbObjectType, ObjectInfo};
 use super::types::{
-    CellValue, ColumnMeta, ConnectionConfig, IndexInfo, QueryResult, RoutineInfo, ServerInfo,
-    TableInfo,
+    cell_to_text, CellValue, ColumnMeta, ConnectionConfig, IndexInfo, QueryResult, RoutineInfo,
+    ServerInfo, TableInfo,
 };
 
 pub struct GenericJdbcDriver {
     cfg: ConnectionConfig,
     driver: JdbcDriver,
     bridge: tokio::sync::Mutex<Option<Bridge>>,
+    /// 会话内 schema 切换跟踪（None = 连接默认 schema）
+    current_schema: tokio::sync::Mutex<Option<String>>,
     dialect: Arc<dyn SqlDialect>,
 }
 
 fn cell_text(row: &[CellValue], idx: usize) -> Option<String> {
-    match row.get(idx) {
-        Some(CellValue::Text(s)) | Some(CellValue::Binary(s)) => Some(s.clone()),
-        Some(CellValue::Int(i)) => Some(i.to_string()),
-        Some(CellValue::UInt(u)) => Some(u.to_string()),
-        _ => None,
-    }
+    row.get(idx).and_then(cell_to_text)
 }
 
 impl GenericJdbcDriver {
@@ -48,6 +45,7 @@ impl GenericJdbcDriver {
             cfg: cfg.clone(),
             driver,
             bridge: tokio::sync::Mutex::new(None),
+            current_schema: tokio::sync::Mutex::new(None),
             dialect: dialect::build(cfg.kind)?,
         })
     }
@@ -70,21 +68,23 @@ impl GenericJdbcDriver {
     }
 
     async fn with_bridge<T>(&self, f: impl AsyncFnOnce(&mut Bridge) -> DbResult<T>) -> DbResult<T> {
-        let mut guard = self.bridge.lock().await;
-        if guard.is_none() {
-            let mut b = bridge::spawn(BridgeKind::ObJdbc, &self.driver.jars).await?;
-            b.call(json!({
-                "cmd": "connect",
-                "url": self.url(),
-                "driverClass": self.driver.driver_class,
-                "user": self.cfg.username,
-                "password": self.cfg.password,
-            }))
-            .await?;
-            *guard = Some(b);
-        }
-        let b = guard.as_mut().expect("bridge just ensured");
-        f(b).await
+        bridge::with_ensured(
+            &self.bridge,
+            async || {
+                let mut b = bridge::spawn(BridgeKind::ObJdbc, &self.driver.jars).await?;
+                b.call(json!({
+                    "cmd": "connect",
+                    "url": self.url(),
+                    "driverClass": self.driver.driver_class,
+                    "user": self.cfg.username,
+                    "password": self.cfg.password,
+                }))
+                .await?;
+                Ok(b)
+            },
+            f,
+        )
+        .await
     }
 
     async fn bridge_call(&self, req: Value) -> DbResult<Value> {
@@ -113,16 +113,71 @@ impl GenericJdbcDriver {
         self.meta(json!({ "cmd": "metaTables", "schema": schema }))
             .await
     }
+
+    /// 会话内 schema 切换语句（按 driver_class 嗅探方言；不认识的驱动返回 None）。
+    /// Some(schema) 切换 / None 复位为连接默认。
+    fn schema_statement(&self, target: Option<&str>) -> Option<String> {
+        let dc = self.driver.driver_class.to_lowercase();
+        if dc.contains("oracle") {
+            Some(match target {
+                Some(s) => format!(
+                    "ALTER SESSION SET CURRENT_SCHEMA = \"{}\"",
+                    s.replace('"', "\"\"")
+                ),
+                None => format!(
+                    "ALTER SESSION SET CURRENT_SCHEMA = \"{}\"",
+                    self.cfg.username.replace('"', "\"\"")
+                ),
+            })
+        } else if dc.contains("mysql") || dc.contains("mariadb") || dc.contains("oceanbase") {
+            Some(match target {
+                Some(s) => format!("USE `{}`", s.replace('`', "``")),
+                None => format!("USE `{}`", self.cfg.username.replace('`', "``")),
+            })
+        } else if dc.contains("postgresql") || dc.contains("pgjdbc") {
+            Some(match target {
+                Some(s) => format!("SET search_path TO \"{}\"", s.replace('"', "\"\"")),
+                None => "SET search_path TO \"$user\", public".into(),
+            })
+        } else {
+            None
+        }
+    }
+
+    /// 会话内切换 schema（best-effort：失败仅告警不中断用户查询；
+    /// 无论成败都记录尝试值，避免每次查询重试风暴）
+    async fn set_current_schema(&self, database: Option<&str>) {
+        let target = database
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let mut last = self.current_schema.lock().await;
+        if last.as_deref() == target.as_deref() {
+            return;
+        }
+        *last = target;
+        let stmt = match last.as_deref() {
+            Some(t) => self.schema_statement(Some(t)),
+            None if !self.cfg.username.is_empty() => self.schema_statement(None),
+            None => None,
+        };
+        if let Some(stmt) = stmt {
+            if let Err(e) = self.query(&stmt, vec![], 1).await {
+                log::warn!("JDBC 会话内切换 schema 失败：{e}");
+            }
+        }
+    }
 }
 
 #[async_trait]
 impl DatabaseDriver for GenericJdbcDriver {
     async fn ping(&self) -> DbResult<()> {
-        // 真实探活：先 SELECT 1，Oracle 类后端回退 DUAL 形式
-        if self.execute(None, "SELECT 1", 1).await.is_ok() {
+        // 真实探活：先 SELECT 1，Oracle 类后端回退 DUAL 形式；
+        // 绕过 execute 避免触发 schema 切换、保持会话内 schema 状态
+        if self.query("SELECT 1", vec![], 1).await.is_ok() {
             return Ok(());
         }
-        self.execute(None, "SELECT 1 FROM DUAL", 1).await.map(|_| ())
+        self.query("SELECT 1 FROM DUAL", vec![], 1).await.map(|_| ())
     }
 
     async fn server_info(&self) -> DbResult<ServerInfo> {
@@ -211,33 +266,29 @@ impl DatabaseDriver for GenericJdbcDriver {
             .meta(json!({ "cmd": "metaIndexes", "schema": schema, "table": table }))
             .await?;
         // rows: [INDEX_NAME, NON_UNIQUE, COLUMN_NAME, ORDINAL_POSITION, TYPE]
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for row in &r.rows {
-            let name = cell_text(row, 0).unwrap_or_default();
-            if name.is_empty() {
-                continue;
-            }
-            let unique = cell_text(row, 1).map(|n| n == "false" || n == "0").unwrap_or(false);
-            let column = cell_text(row, 2).unwrap_or_default();
-            match out.last_mut() {
-                Some(last) if last.name == name => last.columns.push(column),
-                _ => out.push(IndexInfo {
-                    name,
-                    columns: vec![column],
-                    unique,
-                    primary: false,
-                }),
-            }
-        }
-        Ok(out)
+        Ok(aggregate_index_rows(
+            r.rows
+                .iter()
+                .filter(|row| !cell_text(row, 0).unwrap_or_default().is_empty()),
+            |row| {
+                let name = cell_text(row, 0).unwrap_or_default();
+                let unique = cell_text(row, 1)
+                    .map(|n| n == "false" || n == "0")
+                    .unwrap_or(false);
+                (name, unique, false)
+            },
+            |row| cell_text(row, 2).unwrap_or_default(),
+        ))
     }
 
     async fn execute(
         &self,
-        _database: Option<&str>,
+        database: Option<&str>,
         sql: &str,
         max_rows: u32,
     ) -> DbResult<QueryResult> {
+        // 用户的 SQL 需要跟随 UI 选中的库，切换为会话内可见（best-effort）
+        self.set_current_schema(database).await;
         self.query(sql, vec![], max_rows).await
     }
 
@@ -315,13 +366,7 @@ impl DatabaseDriver for GenericJdbcDriver {
 
 impl Drop for GenericJdbcDriver {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.bridge.try_lock()
-            && let Some(mut b) = guard.take()
-                && let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    handle.spawn(async move {
-                        b.shutdown().await;
-                    });
-                }
+        bridge::shutdown_on_drop(&self.bridge);
     }
 }
 

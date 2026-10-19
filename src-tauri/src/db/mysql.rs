@@ -15,7 +15,7 @@ use crate::error::{AppError, DbResult};
 
 use super::dialect::{MySqlFamilyDialect, SqlDialect};
 use super::driver::DatabaseDriver;
-use super::objects::{CatalogQuery, DbObjectType, ObjectInfo};
+use super::objects::{aggregate_index_rows, CatalogQuery, DbObjectType, ObjectInfo};
 use super::types::{
     CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, DbKind, IndexInfo, QueryResult,
     RoutineInfo, RoutineParam, SemanticType, ServerInfo, TableInfo,
@@ -465,23 +465,16 @@ impl DatabaseDriver for MySqlDriver {
             )
             .await?;
         // 按索引名聚合列（保持查询顺序）
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for r in &rows {
-            let name: String = r.get(0).unwrap_or_default();
-            let non_unique: i64 = r.get(1).unwrap_or(1);
-            let column: String = r.get(2).unwrap_or_default();
-            let primary: i64 = r.get(3).unwrap_or(0);
-            match out.last_mut() {
-                Some(last) if last.name == name => last.columns.push(column),
-                _ => out.push(IndexInfo {
-                    name,
-                    columns: vec![column],
-                    unique: non_unique == 0,
-                    primary: primary != 0,
-                }),
-            }
-        }
-        Ok(out)
+        Ok(aggregate_index_rows(
+            rows.iter(),
+            |r| {
+                let name: String = r.get(0).unwrap_or_default();
+                let non_unique: i64 = r.get(1).unwrap_or(1);
+                let primary: i64 = r.get(3).unwrap_or(0);
+                (name, non_unique == 0, primary != 0)
+            },
+            |r| r.get::<String, _>(2).unwrap_or_default(),
+        ))
     }
 
     async fn query_text(&self, sql: &str, params: &[String], value_index: usize) -> DbResult<String> {

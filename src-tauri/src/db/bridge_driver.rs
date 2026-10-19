@@ -13,10 +13,12 @@ use crate::error::{AppError, DbResult};
 use super::bridge::{self, Bridge, BridgeKind};
 use super::dialect::{self, SqlDialect};
 use super::driver::DatabaseDriver;
-use super::objects::{CatalogQuery, DbObjectType, ObjectInfo};
+use super::objects::{
+    aggregate_index_rows, parse_routine_arguments, CatalogQuery, DbObjectType, ObjectInfo,
+};
 use super::types::{
-    CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, IndexInfo, QueryResult, RoutineInfo,
-    RoutineParam, SemanticType, ServerInfo, TableInfo,
+    cell_to_text, CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, IndexInfo, QueryResult,
+    RoutineInfo, SemanticType, ServerInfo, TableInfo,
 };
 
 pub struct BridgeDriver {
@@ -24,6 +26,8 @@ pub struct BridgeDriver {
     kind: BridgeKind,
     /// 惰性建立的桥接进程（内含数据库连接）
     bridge: tokio::sync::Mutex<Option<Bridge>>,
+    /// 会话内 CURRENT_SCHEMA 跟踪（None = 连接默认 schema，避免重复下发 ALTER）
+    current_schema: tokio::sync::Mutex<Option<String>>,
     dialect: Arc<dyn SqlDialect>,
 }
 
@@ -33,6 +37,7 @@ impl BridgeDriver {
             cfg: cfg.clone(),
             kind,
             bridge: tokio::sync::Mutex::new(None),
+            current_schema: tokio::sync::Mutex::new(None),
             dialect: dialect::build(cfg.kind)?,
         })
     }
@@ -57,22 +62,24 @@ impl BridgeDriver {
 
     /// 确保桥接进程与数据库连接就绪
     async fn with_bridge<T>(&self, f: impl AsyncFnOnce(&mut Bridge) -> DbResult<T>) -> DbResult<T> {
-        let mut guard = self.bridge.lock().await;
-        if guard.is_none() {
-            let mut b = bridge::spawn(self.kind, &[]).await?;
-            b.call(json!({
-                "cmd": "connect",
-                "host": self.cfg.host,
-                "port": self.cfg.effective_port(),
-                "service": self.service()?,
-                "user": self.cfg.username,
-                "password": self.cfg.password,
-            }))
-            .await?;
-            *guard = Some(b);
-        }
-        let b = guard.as_mut().expect("bridge just ensured");
-        f(b).await
+        bridge::with_ensured(
+            &self.bridge,
+            async || {
+                let mut b = bridge::spawn(self.kind, &[]).await?;
+                b.call(json!({
+                    "cmd": "connect",
+                    "host": self.cfg.host,
+                    "port": self.cfg.effective_port(),
+                    "service": self.service()?,
+                    "user": self.cfg.username,
+                    "password": self.cfg.password,
+                }))
+                .await?;
+                Ok(b)
+            },
+            f,
+        )
+        .await
     }
 
     /// 执行查询并映射为 QueryResult
@@ -97,36 +104,50 @@ impl BridgeDriver {
         Ok(result
             .rows
             .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(|c| match c {
-                        CellValue::Null => None,
-                        CellValue::Text(s) | CellValue::Binary(s) => Some(s),
-                        CellValue::Int(i) => Some(i.to_string()),
-                        CellValue::UInt(u) => Some(u.to_string()),
-                        CellValue::Float(f) => Some(f.to_string()),
-                        CellValue::Bool(b) => Some(if b { "1".into() } else { "0".into() }),
-                    })
-                    .collect()
-            })
+            .map(|row| row.into_iter().map(|c| cell_to_text(&c)).collect())
             .collect())
     }
-}
 
-pub(crate) fn parse_semantic(s: &str) -> SemanticType {
-    match s {
-        "text" => SemanticType::Text,
-        "longtext" => SemanticType::LongText,
-        "json" => SemanticType::Json,
-        "binary" => SemanticType::Binary,
-        "date" => SemanticType::Date,
-        "datetime" => SemanticType::DateTime,
-        "time" => SemanticType::Time,
-        "number" => SemanticType::Number,
-        "decimal" => SemanticType::Decimal,
-        "bool" => SemanticType::Bool,
-        "uuid" => SemanticType::Uuid,
-        _ => SemanticType::Unknown,
+    /// 会话内切换 CURRENT_SCHEMA（跟踪上次值避免重复下发；None 复位为用户默认 schema）
+    async fn set_current_schema(&self, database: Option<&str>) -> DbResult<()> {
+        let target = database
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let mut last = self.current_schema.lock().await;
+        if last.as_deref() == target.as_deref() {
+            return Ok(());
+        }
+        if let Some(s) = &target {
+            let ident = self.dialect.quote_ident(s);
+            self.query(
+                &format!("ALTER SESSION SET CURRENT_SCHEMA = {ident}"),
+                vec![],
+                1,
+            )
+            .await?;
+            *last = Some(s.clone());
+            return Ok(());
+        }
+        // 复位为用户默认 schema（OB Oracle 用户名形如 user@tenant，取 user 部分）
+        *last = None;
+        let user = self
+            .cfg
+            .username
+            .split('@')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        if !user.is_empty() {
+            let ident = self.dialect.quote_ident(user);
+            self.query(
+                &format!("ALTER SESSION SET CURRENT_SCHEMA = {ident}"),
+                vec![],
+                1,
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 
@@ -167,8 +188,9 @@ pub(crate) fn parse_query_result(data: &Value) -> DbResult<QueryResult> {
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string(),
-                    semantic: parse_semantic(
+                    semantic: SemanticType::from_label(
                         c.get("semantic").and_then(Value::as_str).unwrap_or("unknown"),
+                        SemanticType::Unknown,
                     ),
                 })
                 .collect()
@@ -213,8 +235,9 @@ pub(crate) fn parse_query_result(data: &Value) -> DbResult<QueryResult> {
 #[async_trait]
 impl DatabaseDriver for BridgeDriver {
     async fn ping(&self) -> DbResult<()> {
-        // 真实探活（sidecar 的 ping 命令仅协议回应，不校验 DB 连接）
-        self.execute(None, "SELECT 1 FROM DUAL", 1).await.map(|_| ())
+        // 真实探活（sidecar 的 ping 命令仅协议回应，不校验 DB 连接）；
+        // 绕过 execute 避免触发 schema 切换、保持会话内 CURRENT_SCHEMA 状态
+        self.query("SELECT 1 FROM DUAL", vec![], 1).await.map(|_| ())
     }
 
     async fn server_info(&self) -> DbResult<ServerInfo> {
@@ -322,30 +345,9 @@ impl DatabaseDriver for BridgeDriver {
                 .await?
             }
         };
-        let mut params: Vec<RoutineParam> = Vec::new();
-        let mut return_type: Option<String> = None;
-        for r in &rows {
-            let arg_name = r.first().cloned().flatten().unwrap_or_default();
-            let mode = r.get(1).cloned().flatten().unwrap_or_default();
-            let data_type = r.get(2).cloned().flatten().unwrap_or_default();
-            let position = r
-                .get(3)
-                .cloned()
-                .flatten()
-                .and_then(|p| p.trim().parse::<i32>().ok())
-                .unwrap_or(-1);
-            if arg_name.is_empty() {
-                if position <= 0 {
-                    return_type = Some(data_type);
-                }
-            } else {
-                params.push(RoutineParam {
-                    name: Some(arg_name),
-                    mode: if mode.is_empty() { "IN".into() } else { mode },
-                    data_type,
-                });
-            }
-        }
+        let (params, return_type) = parse_routine_arguments(rows.iter(), |r, i| {
+            r.get(i).cloned().flatten().filter(|s| !s.is_empty())
+        });
         Ok(RoutineInfo {
             name: name.to_string(),
             routine_type: if routine_type == DbObjectType::Function {
@@ -388,42 +390,37 @@ impl DatabaseDriver for BridgeDriver {
                 .await?
             }
         };
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for r in &rows {
-            let name = r.first().cloned().flatten().unwrap_or_default();
-            let unique = r
-                .get(1)
-                .cloned()
-                .flatten()
-                .map(|u| u.eq_ignore_ascii_case("UNIQUE"))
-                .unwrap_or(false);
-            let column = r.get(2).cloned().flatten().unwrap_or_default();
-            let primary = r
-                .get(3)
-                .cloned()
-                .flatten()
-                .and_then(|c| c.trim().parse::<i32>().ok())
-                .unwrap_or(0)
-                > 0;
-            match out.last_mut() {
-                Some(last) if last.name == name => last.columns.push(column),
-                _ => out.push(IndexInfo {
-                    name,
-                    columns: vec![column],
-                    unique,
-                    primary,
-                }),
-            }
-        }
-        Ok(out)
+        Ok(aggregate_index_rows(
+            rows.iter(),
+            |r| {
+                let name = r.first().cloned().flatten().unwrap_or_default();
+                let unique = r
+                    .get(1)
+                    .cloned()
+                    .flatten()
+                    .map(|u| u.eq_ignore_ascii_case("UNIQUE"))
+                    .unwrap_or(false);
+                let primary = r
+                    .get(3)
+                    .cloned()
+                    .flatten()
+                    .and_then(|c| c.trim().parse::<i32>().ok())
+                    .unwrap_or(0)
+                    > 0;
+                (name, unique, primary)
+            },
+            |r| r.get(2).cloned().flatten().unwrap_or_default(),
+        ))
     }
 
     async fn execute(
         &self,
-        _database: Option<&str>,
+        database: Option<&str>,
         sql: &str,
         max_rows: u32,
     ) -> DbResult<QueryResult> {
+        // 用户的 SQL 需要跟随 UI 选中的库（schema），切换为会话内可见
+        self.set_current_schema(database).await?;
         self.query(sql, vec![], max_rows).await
     }
 
@@ -450,14 +447,7 @@ impl DatabaseDriver for BridgeDriver {
             .rows
             .into_iter()
             .map(|row| {
-                let cell = |i: usize| -> Option<String> {
-                    match row.get(i) {
-                        Some(CellValue::Text(s)) | Some(CellValue::Binary(s)) => Some(s.clone()),
-                        Some(CellValue::Int(i)) => Some(i.to_string()),
-                        Some(CellValue::UInt(u)) => Some(u.to_string()),
-                        _ => None,
-                    }
-                };
+                let cell = |i: usize| -> Option<String> { row.get(i).and_then(cell_to_text) };
                 ObjectInfo {
                     name: cell(q.name_index).unwrap_or_default(),
                     object_type: obj,
@@ -519,12 +509,6 @@ impl DatabaseDriver for BridgeDriver {
 
 impl Drop for BridgeDriver {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.bridge.try_lock()
-            && let Some(mut b) = guard.take()
-                && let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    handle.spawn(async move {
-                        b.shutdown().await;
-                    });
-                }
+        bridge::shutdown_on_drop(&self.bridge);
     }
 }

@@ -513,6 +513,7 @@ import { dbCommit, dbRegistry, dbRollback, dbSetAutocommit } from './api/db'
 import { open as openDirDialog } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { dispatchCommand } from './utils/commands'
+import { startWindowDrag } from './utils/drag'
 import { objectIcon } from './utils/objectIcons'
 import { describeConnError } from './utils/connError'
 import { SHORTCUT_ACTIONS, matchesShortcut } from './utils/shortcuts'
@@ -615,16 +616,10 @@ function startZoneDrag(zone: 'left' | 'right' | 'bottom', e: MouseEvent): void {
   const start = horizontal ? e.clientY : e.clientX
   const startSize = layout.sizes[zone]
   const sign = zone === 'left' ? 1 : -1
-  const onMove = (ev: MouseEvent): void => {
+  startWindowDrag((ev) => {
     const delta = (horizontal ? ev.clientY : ev.clientX) - start
     layout.resizeZone(zone, startSize + sign * delta)
-  }
-  const onUp = (): void => {
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
+  })
 }
 
 /** 面板显隐切换：停靠→隐藏 / 隐藏→唤回 / 悬浮→置焦（中心常驻面板无动作）；日志可见时清零未读 */

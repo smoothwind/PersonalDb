@@ -13,10 +13,12 @@ use crate::error::{AppError, DbResult};
 
 use super::dialect::{OracleDialect, SqlDialect};
 use super::driver::DatabaseDriver;
-use super::objects::{CatalogQuery, DbObjectType, ObjectInfo};
+use super::objects::{
+    aggregate_index_rows, parse_routine_arguments, CatalogQuery, DbObjectType, ObjectInfo,
+};
 use super::types::{
     CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, DbKind, IndexInfo, QueryResult, RoutineInfo,
-    RoutineParam, SemanticType, ServerInfo, TableInfo,
+    SemanticType, ServerInfo, TableInfo,
 };
 
 use oracle::pool::{Pool, PoolBuilder};
@@ -482,29 +484,9 @@ impl DatabaseDriver for OracleDriver {
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
 
-        let mut params: Vec<RoutineParam> = Vec::new();
-        let mut return_type: Option<String> = None;
-        for r in &rows {
-            let arg_name = r.first().cloned().unwrap_or_default();
-            let mode = r.get(1).cloned().unwrap_or_default();
-            let data_type = r.get(2).cloned().unwrap_or_default();
-            let position = r
-                .get(3)
-                .and_then(|p| p.trim().parse::<i32>().ok())
-                .unwrap_or(-1);
-            if arg_name.is_empty() {
-                // 无名参数：position 0 为函数返回值
-                if position <= 0 {
-                    return_type = Some(data_type);
-                }
-            } else {
-                params.push(RoutineParam {
-                    name: Some(arg_name),
-                    mode: if mode.is_empty() { "IN".into() } else { mode },
-                    data_type,
-                });
-            }
-        }
+        let (params, return_type) = parse_routine_arguments(rows.iter(), |r, i| {
+            r.get(i).cloned().filter(|s| !s.is_empty())
+        });
         Ok(RoutineInfo {
             name,
             routine_type: if routine_type == DbObjectType::Function {
@@ -551,27 +533,23 @@ impl DatabaseDriver for OracleDriver {
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
 
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for r in &rows {
-            let name = r.first().cloned().unwrap_or_default();
-            let unique = r.get(1).map(|u| u.eq_ignore_ascii_case("UNIQUE")).unwrap_or(false);
-            let column = r.get(2).cloned().unwrap_or_default();
-            let primary = r
-                .get(4)
-                .and_then(|c| c.trim().parse::<i32>().ok())
-                .unwrap_or(0)
-                > 0;
-            match out.last_mut() {
-                Some(last) if last.name == name => last.columns.push(column),
-                _ => out.push(IndexInfo {
-                    name,
-                    columns: vec![column],
-                    unique,
-                    primary,
-                }),
-            }
-        }
-        Ok(out)
+        Ok(aggregate_index_rows(
+            rows.iter(),
+            |r| {
+                let name = r.first().cloned().unwrap_or_default();
+                let unique = r
+                    .get(1)
+                    .map(|u| u.eq_ignore_ascii_case("UNIQUE"))
+                    .unwrap_or(false);
+                let primary = r
+                    .get(4)
+                    .and_then(|c| c.trim().parse::<i32>().ok())
+                    .unwrap_or(0)
+                    > 0;
+                (name, unique, primary)
+            },
+            |r| r.get(2).cloned().unwrap_or_default(),
+        ))
     }
 }
 
