@@ -21,6 +21,9 @@ use super::types::{
     RoutineInfo, SemanticType, ServerInfo, TableInfo,
 };
 
+/// 元数据/目录类查询的行数保护上限（与 OCI oracle.rs 的 MAX_QUERY_ROWS 对齐）
+const MAX_META_ROWS: u32 = 10_000;
+
 pub struct BridgeDriver {
     cfg: ConnectionConfig,
     kind: BridgeKind,
@@ -100,7 +103,7 @@ impl BridgeDriver {
 
     /// 查询返回的行（字符串矩阵），供元数据命令使用
     async fn query_rows(&self, sql: &str, params: Vec<String>) -> DbResult<Vec<Vec<Option<String>>>> {
-        let result = self.query(sql, params, 10_000).await?;
+        let result = self.query(sql, params, MAX_META_ROWS).await?;
         Ok(result
             .rows
             .into_iter()
@@ -442,7 +445,7 @@ impl DatabaseDriver for BridgeDriver {
         } else {
             vec![]
         };
-        let result = self.query(&q.sql, params, 10_000).await?;
+        let result = self.query(&q.sql, params, MAX_META_ROWS).await?;
         Ok(result
             .rows
             .into_iter()
