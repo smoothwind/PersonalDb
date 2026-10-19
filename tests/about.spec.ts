@@ -140,7 +140,8 @@ describe('关于对话框 — 内容与交互', () => {
     const logo = wrapper.find('.about-logo')
     expect(logo.isVisible()).toBe(true)
     expect(logo.text()).toContain('PersonalDb')
-    expect(wrapper.find('.about-ver').text()).toContain('v0.1.0')
+    // 版本号随发布变化：只校验形态，避免每次发版改测试
+    expect(wrapper.find('.about-ver').text()).toMatch(/^v\d+\.\d+\.\d+/)
     const stack = wrapper.find('.about-stack').text()
     expect(stack).toContain('Tauri 2')
     expect(stack).toContain('WebView2')
