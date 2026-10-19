@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # 数据库驱动
-mysql_async = "0.35"
+mysql_async = "0.37"
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1", "with-serde_json-1"] }
 deadpool-postgres = "0.14"
 fallible-iterator = "0.2"
