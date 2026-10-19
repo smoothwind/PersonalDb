@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { defineComponent, ref } from 'vue'
+import { defineComponent, reactive, ref } from 'vue'
 import type { Ref } from 'vue'
 import { useResultPipeline } from '../src/composables/useResultPipeline'
 import type { QueryTab } from '../src/stores/tabs'
@@ -94,5 +94,43 @@ describe('useResultPipeline — 过滤（jsdom 无 Worker → 同步路径）', 
     await w.vm.$nextTick()
     await Promise.resolve()
     expect(vm.filteredIdx).toEqual([1])
+  })
+})
+
+describe('useResultPipeline — 分页续拉（原地追加，回归）', () => {
+  it('loadMore 原地 push 后 filteredIdx / resultRows 同步增长', async () => {
+    const tab = reactive(tabOf(['name'], [['A'], ['B']]))
+    const w = mount(Host, { props: { tab } })
+    const vm = w.vm as unknown as Record<string, unknown>
+    expect(vm.filteredIdx).toEqual([0, 1])
+    tab.result!.rows.push(['C'])
+    await w.vm.$nextTick()
+    await Promise.resolve()
+    expect(vm.filteredIdx).toEqual([0, 1, 2])
+    expect(vm.resultRows).toEqual([{ c0_name: 'A' }, { c0_name: 'B' }, { c0_name: 'C' }])
+  })
+
+  it('追加行后既有筛选条件对新行生效', async () => {
+    const tab = reactive(tabOf(['name'], [['A'], ['B']]))
+    const w = mount(Host, { props: { tab } })
+    const vm = w.vm as unknown as Record<string, unknown>
+    vm.searchApplied = 'b'
+    await w.vm.$nextTick()
+    await Promise.resolve()
+    expect(vm.filteredIdx).toEqual([1])
+    tab.result!.rows.push(['Bb'], ['C'])
+    await w.vm.$nextTick()
+    await Promise.resolve()
+    expect(vm.filteredIdx).toEqual([1, 2])
+  })
+
+  it('追加行后 distinct 缓存失效（新值可出现在筛选列表）', async () => {
+    const tab = reactive(tabOf(['name'], [['A'], ['B']]))
+    const w = mount(Host, { props: { tab } })
+    const vm = w.vm as unknown as Record<string, unknown>
+    const before = vm.distinctCache as Map<string, string[]>
+    tab.result!.rows.push(['C'])
+    await w.vm.$nextTick()
+    expect(vm.distinctCache).not.toBe(before)
   })
 })

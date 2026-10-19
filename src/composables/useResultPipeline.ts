@@ -2,7 +2,7 @@
  * 结果集统一数据管线：矩阵 + prop 索引 + Worker 过滤 + 物化行。
  * 唯一事实源 filteredIdx：Worker 异步 / 同步回退共用同一 filterCore（≥3000 行移出主线程）。
  */
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onBeforeUnmount, toRaw } from 'vue'
 import type { Ref } from 'vue'
 import { filterMatrix, type FilterOptions } from '../workers/filterCore'
 import type { QueryTab } from '../stores/tabs'
@@ -46,12 +46,13 @@ export function useResultPipeline(options: {
   const valueFilters = ref<Record<string, string[]>>({})
   const distinctCache = ref<Map<string, string[]>>(new Map())
 
-  watch(
-    () => tab().result,
-    () => {
-      distinctCache.value = new Map()
-    },
-  )
+watch(
+  // 结果对象替换与分页续拉（原地 rows.push）都要使 distinct 缓存失效
+  [() => tab().result, () => tab().result?.rows.length],
+  () => {
+    distinctCache.value = new Map()
+  },
+)
 
   function currentFilterOptions(): FilterOptions {
     const colFilters: { col: number; q: string }[] = []
@@ -101,11 +102,26 @@ export function useResultPipeline(options: {
       }
     }
     const token = ++filterSeq.n
-    filterWorker.postMessage({ token, rows: matrix.value, ...currentFilterOptions() })
+    try {
+      // toRaw：reactive proxy 无法结构化克隆（DataCloneError），Worker 必须收原始数组
+      filterWorker.postMessage({ token, rows: toRaw(matrix.value), ...currentFilterOptions() })
+    } catch {
+      filterWorker.terminate()
+      filterWorker = null
+      applyFilterSync()
+    }
   }
 
   watch(
-    [searchApplied, valueFilters, colSettings, () => tab().result, () => editMode.value],
+    // rows.length：loadMore 原地 push 不改变 result 身份，必须显式跟踪长度
+    [
+      searchApplied,
+      valueFilters,
+      colSettings,
+      () => tab().result,
+      () => tab().result?.rows.length,
+      () => editMode.value,
+    ],
     () => scheduleFilter(),
     { immediate: true },
   )

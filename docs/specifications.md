@@ -740,6 +740,7 @@
 - **消费**：`resultRows` = 按需物化对象视图（el-table 渲染/复制/导出/统计触达才构建；**虚拟路径模板不触达 → 零对象分配**）；虚拟网格行 = `filteredIdx.map(i => matrix[i])` **零拷贝引用切片**，列携带 `srcIndex` 直读源矩阵（排序/取值/NULL 灰斜体一致）。
 - **明确不做**：导出 Worker（后端为瓶颈）；列虚拟化（el-table-v2 不支持）；双渲染器完全统一（数据管线已统一，特性差异见 SPEC-RESULT-11）。
 - **落点**：管线整体抽为 `composables/useResultPipeline.ts`（QueryTabPane 仅消费 `matrix/propIndex/filteredIdx/valueFilters/distinctCache/resultRows`；Worker 生命周期随 composable 卸载自清理）。
+- **反应式不变量**：分页续拉是**原地 `result.rows.push`**（不换 `result` 对象），故过滤/去重 watch 必须显式跟踪 `result.rows.length`，否则续拉行不参与过滤与渲染；Worker 收到 `postMessage` 前必须 `toRaw`（reactive proxy 无法结构化克隆，抛 `DataCloneError`，须 catch 后同步回退）。
 
 ## 备注
 
