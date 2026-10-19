@@ -43,6 +43,12 @@ export interface ResultPrefs {
   maxTotalRows: number
 }
 
+/** SQL 执行偏好 */
+export interface QueryPrefs {
+  /** 执行超时（秒）；0 = 不限制 */
+  execTimeoutSec: number
+}
+
 /** 数据格式展示偏好（单元格值的呈现方式） */
 export interface DataFormatPrefs {
   /** 日期时间显示格式：原始 / 本地 / ISO 8601 */
@@ -204,6 +210,7 @@ export function defaultFormatPrefs(): FormatPrefs {
 const THEME_KEY = 'personaldb.theme'
 const EDITOR_KEY = 'personaldb.editor'
 const RESULT_KEY = 'personaldb.result'
+const QUERY_KEY = 'personaldb.query'
 const VIEWER_KEY = 'personaldb.viewer'
 const DATAFORMAT_KEY = 'personaldb.dataformat'
 const UI_KEY = 'personaldb.ui'
@@ -249,6 +256,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
       pageSize: 10,
       maxTotalRows: 10000,
     }),
+  )
+  const query = reactive<QueryPrefs>(
+    loadPrefs<QueryPrefs>(QUERY_KEY, { execTimeoutSec: 60 }),
   )
   const dataFormat = reactive<DataFormatPrefs>(
     loadPrefs<DataFormatPrefs>(DATAFORMAT_KEY, {
@@ -311,6 +321,11 @@ export const usePreferencesStore = defineStore('preferences', () => {
   function updateResult(patch: Partial<ResultPrefs>): void {
     Object.assign(result, patch)
     localStorage.setItem(RESULT_KEY, JSON.stringify({ ...result }))
+  }
+
+  function updateQuery(patch: Partial<QueryPrefs>): void {
+    Object.assign(query, patch)
+    localStorage.setItem(QUERY_KEY, JSON.stringify({ ...query }))
   }
 
   function updateViewer(patch: Partial<ViewerPrefs>): void {
@@ -398,6 +413,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     locale,
     editor,
     result,
+    query,
     viewer,
     dataFormat,
     ui,
@@ -410,6 +426,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     changeLocale,
     updateEditor,
     updateResult,
+    updateQuery,
     updateViewer,
     updateDataFormat,
     updateUi,

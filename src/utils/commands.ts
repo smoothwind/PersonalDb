@@ -6,13 +6,15 @@ export interface AppCommandPayload {
   cmd: string
   /** 目标 Tab id（缺省表示广播） */
   tabId?: string
+  /** 目标设置分类（open-settings 命令用） */
+  section?: string
 }
 
 const EVENT_NAME = 'app-command'
 
-export function dispatchCommand(cmd: string, tabId?: string): void {
+export function dispatchCommand(cmd: string, tabId?: string, section?: string): void {
   window.dispatchEvent(
-    new CustomEvent<AppCommandPayload>(EVENT_NAME, { detail: { cmd, tabId } }),
+    new CustomEvent<AppCommandPayload>(EVENT_NAME, { detail: { cmd, tabId, section } }),
   )
 }
 

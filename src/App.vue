@@ -450,7 +450,7 @@
       </el-footer>
 
       <ConnectionForm v-model="formVisible" :initial="editing" @save="onSave" />
-      <SettingsDialog v-model="settingsVisible" />
+      <SettingsDialog v-model="settingsVisible" :section="settingsSection" />
 <LogViewer v-model="logViewerVisible" />
 <DriverManager v-model="driverManagerVisible" />
 <ConfigTransferDialog v-model:visible="transferVisible" initial-tab="export" />
@@ -512,7 +512,7 @@ import { useWorkspaceStore } from './stores/workspaces'
 import { dbCommit, dbRegistry, dbRollback, dbSetAutocommit } from './api/db'
 import { open as openDirDialog } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { dispatchCommand } from './utils/commands'
+import { dispatchCommand, onAppCommand } from './utils/commands'
 import { startWindowDrag } from './utils/drag'
 import { objectIcon } from './utils/objectIcons'
 import { describeConnError } from './utils/connError'
@@ -562,6 +562,12 @@ const epLocale = computed(() => (prefs.locale === 'en' ? enGb : zhCn))
 const formVisible = ref(false)
 const editing = ref<ConnectionConfig | null>(null)
 const settingsVisible = ref(false)
+/** 首选项目标分类（open-settings 命令携带，如超时错误条直达「查询执行」） */
+const settingsSection = ref<string | undefined>()
+// 关闭后清除目标分类，避免下次从标题栏打开时被旧分类强制跳转
+watch(settingsVisible, (open) => {
+  if (!open) settingsSection.value = undefined
+})
 const logViewerVisible = ref(false)
 const driverManagerVisible = ref(false)
 const transferVisible = ref(false)
@@ -697,7 +703,13 @@ const paletteCommands = computed<PaletteCmd[]>(() => {
   return cmds
 })
 const aboutVisible = ref(false)
+let offSettingsCommand: (() => void) | undefined
 onMounted(() => {
+  offSettingsCommand = onAppCommand((p) => {
+    if (p.cmd !== 'open-settings') return
+    settingsSection.value = p.section
+    settingsVisible.value = true
+  })
   connStore.load().catch((e) => console.error('加载连接配置失败', e))
   snippetStore.load().catch((e) => console.error('加载快捷指令失败', e))
   // 工作区：加载并恢复上次工作区页签
@@ -743,6 +755,7 @@ watch(tabSnapshotSig, () => workspaceStore.syncTabs())
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
+  offSettingsCommand?.()
 })
 
 /** 全局快捷键（输入框/编辑器聚焦时不拦截） */

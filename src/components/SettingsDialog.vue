@@ -272,6 +272,25 @@
           </el-form>
         </template>
 
+        <!-- 查询执行 -->
+        <template v-else-if="active === 'query'">
+          <div class="pref-section">{{ t('settings.querySection') }}</div>
+          <el-form label-width="120px" size="small">
+            <el-form-item :label="t('settings.queryTimeout')">
+              <el-input-number
+                :model-value="prefs.query.execTimeoutSec"
+                :min="0"
+                :max="86400"
+                :step="30"
+                controls-position="right"
+                style="width: 150px"
+                @update:model-value="(v: number | undefined) => prefs.updateQuery({ execTimeoutSec: Math.min(86400, Math.max(0, v ?? 60)) })"
+              />
+              <span class="field-hint">{{ t('settings.queryTimeoutHint') }}</span>
+            </el-form-item>
+          </el-form>
+        </template>
+
         <!-- 结果集 -->
         <template v-else-if="active === 'result'">
           <div class="pref-section">{{ t('settings.resultSection') }}</div>
@@ -592,7 +611,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { objectIcon } from '../utils/objectIcons'
 import {
@@ -618,7 +637,7 @@ import {
 } from '../api/db'
 import type { CellValue, SemanticType } from '../types/db'
 
-defineProps<{ modelValue: boolean }>()
+const props = defineProps<{ modelValue: boolean; section?: string }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 
@@ -627,6 +646,14 @@ const prefs = usePreferencesStore()
 const updateStore = useUpdateStore()
 
 const active = ref('appearance')
+
+/** 外部指定分类（如超时错误条直达「查询执行」） */
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open && props.section) active.value = props.section
+  },
+)
 
 /** 数据格式预览行（各类型示例值） */
 const dfPreviewRows: Array<{ type: string; raw: string; value: CellValue; semantic: SemanticType }> = [
@@ -693,6 +720,7 @@ const previewSql = `CREATE TABLE demo_orders (
 
 const categories = computed(() => [
   { key: 'appearance', label: t('settings.appearance'), icon: objectIcon('act_theme') },
+  { key: 'query', label: t('settings.querySection'), icon: objectIcon('act_run') },
   { key: 'editor', label: t('settings.editorSection'), icon: objectIcon('act_code') },
   { key: 'viewer', label: t('settings.viewerSection'), icon: objectIcon('act_code_view') },
   { key: 'result', label: t('settings.resultSection'), icon: objectIcon('act_view_grid') },

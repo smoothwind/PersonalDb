@@ -26,6 +26,8 @@ export interface QueryTab {
   sql: string
   result: QueryResult | null
   error: string
+  /** 错误类别：timeout = 执行超时（错误条据此提供「调整超时」入口） */
+  errorKind?: 'timeout'
   running: boolean
   /** 执行序列号：作废过期请求（停止按钮/防结果错位） */
   runSeq: number
@@ -64,6 +66,9 @@ function buildSelectSql(kind: DbKind, database: string, table: string): string {
       return `SELECT * FROM \"${table}\"`
   }
 }
+
+/** 执行超时错误（错误条据此提供「调整超时」直达设置入口） */
+export class ExecTimeoutError extends Error {}
 
 /** 连接类错误（区别于 SQL 语法/约束错误）：命中则重连后重试一次；供错误条等处复用 */
 export function looksLikeConnError(msg: string): boolean {
@@ -240,16 +245,18 @@ export const useTabsStore = defineStore('tabs', () => {
     activeTabId.value = tabs.value[0]?.id ?? ''
   }
 
-  /** 执行超时（毫秒）：防止后端挂起导致按钮永久 loading */
-  const EXEC_TIMEOUT_MS = 60_000
-
-  /** 单语句执行 + 超时保护（完成后/超时后均清理定时器，不悬挂） */
+  /** 单语句执行 + 超时保护（秒，0 = 不限制；超时后不悬挂定时器） */
   function withExecTimeout<T>(p: Promise<T>): Promise<T> {
+    const sec = Number(prefsStore.query.execTimeoutSec)
+    if (!Number.isFinite(sec) || sec <= 0) return p
     let timer: number | undefined
     return Promise.race([
       p,
       new Promise<never>((_, reject) => {
-        timer = window.setTimeout(() => reject(new Error(tt('query.execTimeout'))), EXEC_TIMEOUT_MS)
+        timer = window.setTimeout(
+          () => reject(new ExecTimeoutError(tt('query.execTimeout', { sec }))),
+          sec * 1000,
+        )
       }),
     ]).finally(() => {
       if (timer !== undefined) window.clearTimeout(timer)
@@ -267,6 +274,7 @@ export const useTabsStore = defineStore('tabs', () => {
   ): Promise<void> {
     const results: QueryResult[] = []
     let firstErr = ''
+    let timedOut = false
     let failedAt = 0
     for (let i = 0; i < stmts.length; i++) {
       if (seq !== tab.runSeq) return
@@ -279,6 +287,7 @@ export const useTabsStore = defineStore('tabs', () => {
         )
       } catch (e) {
         firstErr = String(e)
+        timedOut = e instanceof ExecTimeoutError
         failedAt = i + 1
         break
       }
@@ -287,6 +296,7 @@ export const useTabsStore = defineStore('tabs', () => {
     const sqlText = stmts.join(';\n')
     if (results.length === 0) {
       tab.error = firstErr
+      tab.errorKind = timedOut ? 'timeout' : undefined
       if (looksLikeConnError(firstErr)) connStore.markLost(tab.connectionId)
       logStore.push({
         level: 'error',
@@ -358,6 +368,7 @@ export const useTabsStore = defineStore('tabs', () => {
     const seq = tab.runSeq
     tab.running = true
     tab.error = ''
+    tab.errorKind = undefined
     logger.debug(
       `[sql] session=${session.sessionId} db=${tab.database || '-'}: ${sqlText.slice(0, 200)}`,
     )
@@ -425,6 +436,7 @@ export const useTabsStore = defineStore('tabs', () => {
     } catch (e) {
       if (seq === tab.runSeq) {
         tab.error = String(e)
+        tab.errorKind = e instanceof ExecTimeoutError ? 'timeout' : undefined
         if (looksLikeConnError(String(e))) connStore.markLost(tab.connectionId)
         logStore.push({
           level: 'error',
@@ -515,13 +527,17 @@ export const useTabsStore = defineStore('tabs', () => {
       const sql = wrapPaged(tab.kind, base, total, pageSize)
       let rows
       try {
-        rows = await dbExecute(session.sessionId, tab.database || null, sql, pageSize)
+        rows = await withExecTimeout(
+          dbExecute(session.sessionId, tab.database || null, sql, pageSize),
+        )
       } catch (err) {
         if (!looksLikeConnError(String(err))) throw err
         const ok = await reconnectTab(tab)
         const s2 = ok ? connStore.sessionOf(tab.connectionId) : undefined
         if (!s2) throw err
-        rows = await dbExecute(s2.sessionId, tab.database || null, sql, pageSize)
+        rows = await withExecTimeout(
+          dbExecute(s2.sessionId, tab.database || null, sql, pageSize),
+        )
       }
       tab.result.rows.push(...rows.rows)
       const newTotal = tab.result.rows.length

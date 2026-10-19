@@ -249,8 +249,8 @@
   - `decorations: false` + 自绘标题栏（32px：品牌 + 拖拽区 + 最小化/最大化/关闭），深浅主题联动；拖拽区可移动窗口，双击切换最大化；
   - 树在配置就绪后自动构建（store 加载幂等 + 树挂载后重建），无需手动刷新；
   - 页签右键菜单项按预期关闭对应页签并保持激活态有效；
-  - 「查询数据」打开的页签执行受 60s 超时保护，超时自动复位按钮并提示（杜绝永久 loading）。
-- **落点**：`src-tauri/tauri.conf.json`（decorations）、`capabilities/default.json`（window 权限）、`App.vue`（titlebar/tabMenu）、`stores/connections.ts#load`（幂等）、`stores/tabs.ts#runTab`（超时）。
+  - 「查询数据」打开的页签执行受超时保护（默认 60s，可在首选项「查询执行」中调整，0 = 不限制），超时自动复位按钮并提示；错误条提供「调整超时」按钮直达该设置（杜绝永久 loading，长查询/报表可自行放宽）。
+- **落点**：`src-tauri/tauri.conf.json`（decorations）、`capabilities/default.json`（window 权限）、`App.vue`（titlebar/tabMenu + open-settings 命令）、`stores/connections.ts#load`（幂等）、`stores/tabs.ts#runTab`（超时）、`stores/preferences.ts#query`、`components/SettingsDialog.vue`（查询执行分类）。
 
 ## SPEC-EDITOR-3 执行范围（全部 / 选中 / 当前行）
 

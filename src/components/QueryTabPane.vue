@@ -139,6 +139,15 @@
             <span class="eb-text">{{ tab.error }}</span>
             <span class="eb-actions">
               <el-button
+                v-if="errorIsTimeout"
+                size="small"
+                type="warning"
+                plain
+                @click="openTimeoutSettings"
+              >
+                {{ t('query.adjustTimeout') }}
+              </el-button>
+              <el-button
                 v-if="errorIsConn"
                 size="small"
                 type="warning"
@@ -150,7 +159,7 @@
               <el-button v-else size="small" type="primary" plain @click="retryRun">
                 {{ t('result.retry') }}
               </el-button>
-              <el-button size="small" text @click="tab.error = ''">
+              <el-button size="small" text @click="clearError">
                 {{ t('common.close') }}
               </el-button>
             </span>
@@ -734,7 +743,7 @@ import RecordView from './cell-viewers/RecordView.vue'
 import PlanTree from './plan/PlanTree.vue'
 import ValueRuleEditor from './ValueRuleEditor.vue'
 import { formatSql } from '../utils/sqlFormat'
-import { onAppCommand } from '../utils/commands'
+import { dispatchCommand, onAppCommand } from '../utils/commands'
 import { cellToText, copyText } from '../utils/clipboard'
 import { startWindowDrag } from '../utils/drag'
 import { dbExplain, dbRegistry, exportResultRows, dbExecute, dbListIndexes, dbSetAutocommit, dbCommit, dbRollback, dbBuildDml, saveTextFile, readTextFile } from '../api/db'
@@ -837,6 +846,7 @@ function confirmLoadSql(): void {
   props.tab.database = ''
   props.tab.result = null
   props.tab.error = ''
+  props.tab.errorKind = undefined
   props.tab.sql = loadedSqlText.value
   sqlConnPickerVisible.value = false
   ElMessage.success(t('script.loaded'))
@@ -1575,6 +1585,7 @@ async function runExplain(): Promise<void> {
     viewMode.value = 'plan'
   } catch (e) {
     props.tab.error = String(e)
+    props.tab.errorKind = undefined
   } finally {
     explaining.value = false
   }
@@ -2143,6 +2154,19 @@ function runFromHistory(sql: string): void {
 
 /** 连接类错误 → 错误条显示「重连」而非「重试」 */
 const errorIsConn = computed(() => looksLikeConnError(props.tab.error))
+
+/** 执行超时 → 错误条显示「调整超时」直达首选项 */
+const errorIsTimeout = computed(() => props.tab.errorKind === 'timeout')
+
+function clearError(): void {
+  props.tab.error = ''
+  props.tab.errorKind = undefined
+}
+
+/** 打开首选项「查询执行」分类（放宽或关闭执行超时） */
+function openTimeoutSettings(): void {
+  dispatchCommand('open-settings', undefined, 'query')
+}
 
 /** 编辑态提示条文案 */
 const editModeLabel = computed(() =>
