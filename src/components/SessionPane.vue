@@ -139,7 +139,7 @@
             :width="sessionWidths[k] || undefined"
             :align="k === 'secs' ? 'right' : undefined"
             :sortable="k === 'secs'"
-            show-overflow-tooltip
+            :show-overflow-tooltip="k !== 'sqlText'"
           >
             <template v-if="k === 'state'" #default="{ row }">
               <el-tag size="small" :type="stateTagType(row.state)">{{ row.state }}</el-tag>
