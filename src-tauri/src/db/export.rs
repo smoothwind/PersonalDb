@@ -2,7 +2,7 @@
 //! 文件路径由前端 save 对话框提供，Rust 端直接写文件。
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,41 @@ const MAX_EXPORT_ROWS: u32 = 1_000_000;
 /// INSERT 批大小（多值行数）
 const INSERT_BATCH: usize = 500;
 
+/// 计数写入器：BufWriter 流式落盘 + 字节数统计，
+/// 避免大导出（百万行级）先把全部输出攒进内存再一次性写盘
+struct CountingWriter<W: Write> {
+    inner: BufWriter<W>,
+    count: u64,
+}
+
+impl<W: Write> CountingWriter<W> {
+    fn new(file: W) -> Self {
+        Self {
+            inner: BufWriter::with_capacity(256 * 1024, file),
+            count: 0,
+        }
+    }
+
+    fn flush(self) -> DbResult<u64> {
+        self.inner
+            .into_inner()
+            .map_err(|e| AppError::General(format!("写入导出文件失败: {e}")))?;
+        Ok(self.count)
+    }
+}
+
+impl<W: Write> Write for CountingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.count += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 fn validate_where(w: &str) -> DbResult<()> {
     if w.contains(';') || w.contains("--") || w.contains("/*") {
         return Err(AppError::General(
@@ -94,17 +129,19 @@ pub async fn run_export(
 
     let result = driver.execute(db, &data_sql, max_rows).await?;
 
-    // ---- 渲染 / 落盘 ----
+    // ---- 渲染 / 落盘（流式写入，边生成边落盘） ----
     let bytes: u64 = match req.format {
         ExportFormat::Sql => {
-            let mut out = String::new();
-            out.push_str("-- PersonalDb 导出\n");
-            out.push_str(&format!(
-                "-- 表: {} | 时间: {}\n\n",
+            let mut w = CountingWriter::new(File::create(&req.path)?);
+            writeln!(w, "-- PersonalDb 导出")?;
+            writeln!(
+                w,
+                "-- 表: {} | 时间: {}",
                 req.table,
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-            ));
-            out.push_str(dialect.export_preamble());
+            )?;
+            writeln!(w)?;
+            write!(w, "{}", dialect.export_preamble())?;
 
             if req.include_ddl {
                 let ddl = match dialect.table_ddl_strategy(db, &req.table) {
@@ -123,41 +160,33 @@ pub async fn run_export(
                 if ddl.is_empty() {
                     return Err(AppError::General("获取表 DDL 失败".into()));
                 }
-                out.push_str(&ddl);
-                out.push_str("\n\n");
+                write!(w, "{ddl}")?;
+                write!(w, "\n\n")?;
             }
 
             if req.include_data && !result.rows.is_empty() {
                 for batch in result.rows.chunks(INSERT_BATCH) {
-                    out.push_str(&dialect.insert_statement(
-                        db,
-                        &req.table,
-                        &result.columns,
-                        batch,
-                    ));
-                    out.push('\n');
+                    write!(
+                        w,
+                        "{}",
+                        dialect.insert_statement(db, &req.table, &result.columns, batch)
+                    )?;
+                    writeln!(w)?;
                 }
             }
 
-            let mut f = File::create(&req.path)?;
-            f.write_all(out.as_bytes())?;
-            f.flush()?;
-            out.len() as u64
+            w.flush()?
         }
         ExportFormat::Csv => {
-            let mut out: Vec<u8> = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM，Excel 打开不乱码
+            let mut w = CountingWriter::new(File::create(&req.path)?);
+            w.write_all(&[0xEF, 0xBB, 0xBF])?; // UTF-8 BOM，Excel 打开不乱码
             let header: Vec<String> = result.columns.iter().map(|c| c.name.clone()).collect();
-            out.extend_from_slice(csv_line(&header).as_bytes());
-            out.push(b'\n');
+            writeln!(w, "{}", csv_line(&header))?;
             for row in &result.rows {
                 let cells: Vec<String> = row.iter().map(cell_to_csv).collect();
-                out.extend_from_slice(csv_line(&cells).as_bytes());
-                out.push(b'\n');
+                writeln!(w, "{}", csv_line(&cells))?;
             }
-            let mut f = File::create(&req.path)?;
-            f.write_all(&out)?;
-            f.flush()?;
-            out.len() as u64
+            w.flush()?
         }
         ExportFormat::Excel => {
             let mut wb = rust_xlsxwriter::Workbook::new();
@@ -370,12 +399,17 @@ pub fn export_rows(req: &RowsExportRequest) -> DbResult<ExportSummary> {
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let mut out = String::new();
-            out.push_str(&format!(
-                "-- PersonalDb 导出（选中行） | 表: {} | 时间: {timestamp}\n\n",
+            let mut w = CountingWriter::new(File::create(&req.path)?);
+            if opts.bom {
+                w.write_all(&[0xEF, 0xBB, 0xBF])?;
+            }
+            writeln!(
+                w,
+                "-- PersonalDb 导出（选中行） | 表: {} | 时间: {timestamp}",
                 req.table
-            ));
-            out.push_str(dialect.export_preamble());
+            )?;
+            writeln!(w)?;
+            write!(w, "{}", dialect.export_preamble())?;
             let batch = opts.effective_batch();
             for group in req.rows.chunks(batch) {
                 let values = group
@@ -393,47 +427,31 @@ pub fn export_rows(req: &RowsExportRequest) -> DbResult<ExportSummary> {
                     })
                     .collect::<Vec<_>>()
                     .join(",\n  ");
-                out.push_str(&format!(
-                    "INSERT INTO {tbl} ({col_list}) VALUES\n  {values};\n"
-                ));
+                write!(w, "INSERT INTO {tbl} ({col_list}) VALUES\n  {values};\n")?;
             }
-            let mut bytes: Vec<u8> = if opts.bom { vec![0xEF, 0xBB, 0xBF] } else { Vec::new() };
-            bytes.extend_from_slice(out.as_bytes());
-            let mut f = File::create(&req.path)?;
-            f.write_all(&bytes)?;
-            f.flush()?;
-            bytes.len() as u64
+            w.flush()?
         }
         RowsExportFormat::Csv => {
-            let mut out: Vec<u8> = vec![0xEF, 0xBB, 0xBF];
-            out.extend_from_slice(csv_line(&col_names).as_bytes());
-            out.push(b'\n');
+            let mut w = CountingWriter::new(File::create(&req.path)?);
+            w.write_all(&[0xEF, 0xBB, 0xBF])?;
+            writeln!(w, "{}", csv_line(&col_names))?;
             for row in &req.rows {
                 let cells: Vec<String> = row.iter().map(csv_safe_cell).collect();
-                out.extend_from_slice(csv_line(&cells).as_bytes());
-                out.push(b'\n');
+                writeln!(w, "{}", csv_line(&cells))?;
             }
-            let mut f = File::create(&req.path)?;
-            f.write_all(&out)?;
-            f.flush()?;
-            out.len() as u64
+            w.flush()?
         }
         RowsExportFormat::Txt => {
-            let mut out = String::new();
-            out.push_str(&col_names.join("\t"));
-            out.push('\n');
+            let mut w = CountingWriter::new(File::create(&req.path)?);
+            writeln!(w, "{}", col_names.join("\t"))?;
             for row in &req.rows {
                 let cells: Vec<String> = row
                     .iter()
                     .map(|v| cell_to_csv(v).replace(['\r', '\n'], " "))
                     .collect();
-                out.push_str(&cells.join("\t"));
-                out.push('\n');
+                writeln!(w, "{}", cells.join("\t"))?;
             }
-            let mut f = File::create(&req.path)?;
-            f.write_all(out.as_bytes())?;
-            f.flush()?;
-            out.len() as u64
+            w.flush()?
         }
         RowsExportFormat::Json => {
             // 对象数组：[{col: value, ...}, ...]；二进制保持 base64 字符串

@@ -102,6 +102,14 @@ pub trait SqlDialect: Send + Sync {
     /// 值 → SQL 字面量（导出 INSERT 用；日期/二进制/布尔按方言函数包装）
     fn literal(&self, v: &CellValue, semantic: SemanticType) -> String;
 
+    /// 值 → SQL 字面量（**会话内执行**的 DML 生成用，默认与 literal 一致）。
+    ///
+    /// MySQL 系覆盖：服务器默认模式启用反斜杠转义，字符串字面量须转义反斜杠；
+    /// 导出文件路径走 `literal` + `NO_BACKSLASH_ESCAPES` 前导，两者语义不同。
+    fn dml_literal(&self, v: &CellValue, semantic: SemanticType) -> String {
+        self.literal(v, semantic)
+    }
+
     /// 生成一条多值 INSERT 语句（调用方负责分批）
     fn insert_statement(
         &self,

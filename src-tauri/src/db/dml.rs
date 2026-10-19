@@ -74,7 +74,7 @@ pub fn build_dml(req: &DmlRequest) -> DbResult<Vec<String>> {
             .map(parse_sem)
             .unwrap_or(SemanticType::Text)
     };
-    let lit = |v: &CellValue, i: usize| dialect.literal(v, sem(i));
+    let lit = |v: &CellValue, i: usize| dialect.dml_literal(v, sem(i));
     let ncol = req.columns.len();
 
     let mut out: Vec<String> = Vec::new();

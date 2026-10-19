@@ -483,8 +483,11 @@ async fn execute_on(
 ) -> DbResult<QueryResult> {
     let start = std::time::Instant::now();
     if let Some(schema) = database.filter(|s| !s.is_empty()) {
+        // 兼容传入已带引号的名字；双引号成对转义，避免特殊字符改写语句
+        let raw = schema.trim().trim_matches('"');
+        let quoted = format!("\"{}\"", raw.replace('"', "\"\""));
         client
-            .batch_execute(&format!("SET search_path TO \"{}\"", schema.replace('"', "")))
+            .batch_execute(&format!("SET search_path TO {quoted}"))
             .await?;
     }
 

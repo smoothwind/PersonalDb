@@ -241,7 +241,20 @@ export const useTabsStore = defineStore('tabs', () => {
   }
 
   /** 执行超时（毫秒）：防止后端挂起导致按钮永久 loading */
-const EXEC_TIMEOUT_MS = 60_000
+  const EXEC_TIMEOUT_MS = 60_000
+
+  /** 单语句执行 + 超时保护（完成后/超时后均清理定时器，不悬挂） */
+  function withExecTimeout<T>(p: Promise<T>): Promise<T> {
+    let timer: number | undefined
+    return Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(tt('query.execTimeout'))), EXEC_TIMEOUT_MS)
+      }),
+    ]).finally(() => {
+      if (timer !== undefined) window.clearTimeout(timer)
+    })
+  }
 
   /** 多语句执行：逐条顺序执行，收集成功结果集；任一失败即停（部分成功仍展示已得结果） */
   async function runMultiStatements(
@@ -260,15 +273,9 @@ const EXEC_TIMEOUT_MS = 60_000
       try {
         // 与单语句路径一致的超时保护，防止挂起语句阻塞整批
         results.push(
-          await Promise.race([
+          await withExecTimeout(
             dbExecute(sessionId, tab.database || null, stmts[i], pageSize),
-            new Promise<never>((_, reject) => {
-              window.setTimeout(
-                () => reject(new Error(tt('query.execTimeout'))),
-                EXEC_TIMEOUT_MS,
-              )
-            }),
-          ]),
+          ),
         )
       } catch (e) {
         firstErr = String(e)
@@ -351,7 +358,6 @@ const EXEC_TIMEOUT_MS = 60_000
     const seq = tab.runSeq
     tab.running = true
     tab.error = ''
-    let timer: number | undefined
     logger.debug(
       `[sql] session=${session.sessionId} db=${tab.database || '-'}: ${sqlText.slice(0, 200)}`,
     )
@@ -366,7 +372,6 @@ const EXEC_TIMEOUT_MS = 60_000
       try {
         await runMultiStatements(tab, session.sessionId, stmts, pageSize, seq, startedAt)
       } finally {
-        window.clearTimeout(timer)
         if (seq === tab.runSeq) tab.running = false
       }
       return
@@ -374,12 +379,9 @@ const EXEC_TIMEOUT_MS = 60_000
     try {
       let result
       try {
-        result = await Promise.race([
+        result = await withExecTimeout(
           dbExecute(session.sessionId, tab.database || null, sqlText, pageSize),
-          new Promise<never>((_, reject) => {
-            timer = window.setTimeout(() => reject(new Error(tt('query.execTimeout'))), EXEC_TIMEOUT_MS)
-          }),
-        ])
+        )
       } catch (firstErr) {
         if (seq !== tab.runSeq) throw firstErr
         // 连接类失败：立即重连一次后重试（不重试 SQL 错误/超时）
@@ -388,12 +390,9 @@ const EXEC_TIMEOUT_MS = 60_000
         const ok = await reconnectTab(tab)
         const retrySession = ok ? connStore.sessionOf(tab.connectionId) : undefined
         if (!retrySession) throw firstErr
-        result = await Promise.race([
+        result = await withExecTimeout(
           dbExecute(retrySession.sessionId, tab.database || null, sqlText, pageSize),
-          new Promise<never>((_, reject) => {
-            timer = window.setTimeout(() => reject(new Error(tt('query.execTimeout'))), EXEC_TIMEOUT_MS)
-          }),
-        ])
+        )
       }
       if (seq === tab.runSeq) {
         tab.result = result
@@ -447,7 +446,6 @@ const EXEC_TIMEOUT_MS = 60_000
         logger.error(`[sql] failed: ${String(e)} | sql: ${sqlText.slice(0, 200)}`)
       }
     } finally {
-      window.clearTimeout(timer)
       if (seq === tab.runSeq) tab.running = false
     }
   }

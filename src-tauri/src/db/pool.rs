@@ -1,7 +1,7 @@
 //! 驱动工厂 + 会话管理。
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::error::{AppError, DbResult};
 
@@ -83,14 +83,14 @@ impl ConnectionManager {
         });
         self.sessions
             .lock()
-            .expect("connection manager poisoned")
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(info.session_id.clone(), session);
     }
 
     pub fn get_session(&self, session_id: &str) -> DbResult<Arc<Session>> {
         self.sessions
             .lock()
-            .expect("connection manager poisoned")
+            .unwrap_or_else(PoisonError::into_inner)
             .get(session_id)
             .cloned()
             .ok_or_else(|| AppError::SessionNotFound(session_id.to_string()))
@@ -99,7 +99,7 @@ impl ConnectionManager {
     pub fn remove_session(&self, session_id: &str) -> bool {
         self.sessions
             .lock()
-            .expect("connection manager poisoned")
+            .unwrap_or_else(PoisonError::into_inner)
             .remove(session_id)
             .is_some()
     }
@@ -107,7 +107,7 @@ impl ConnectionManager {
     pub fn list_sessions(&self) -> Vec<SessionInfo> {
         self.sessions
             .lock()
-            .expect("connection manager poisoned")
+            .unwrap_or_else(PoisonError::into_inner)
             .iter()
             .map(|(id, s)| SessionInfo {
                 // 必须返回 Map key（内部会话 ID）：前端按 session_id 寻址的命令都走 get_session（按 key 查）
@@ -124,7 +124,7 @@ impl ConnectionManager {
     pub fn sessions_snapshot(&self) -> Vec<Arc<Session>> {
         self.sessions
             .lock()
-            .expect("connection manager poisoned")
+            .unwrap_or_else(PoisonError::into_inner)
             .values()
             .cloned()
             .collect()

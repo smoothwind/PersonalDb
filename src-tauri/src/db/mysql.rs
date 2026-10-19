@@ -68,7 +68,9 @@ impl MySqlDriver {
     ) -> DbResult<QueryResult> {
         let start = std::time::Instant::now();
         if let Some(db) = database.filter(|d| !d.is_empty()) {
-            conn.query_drop(format!("USE `{db}`")).await?;
+            // 库名经方言转义（反引号成对转义），避免特殊字符逃逸
+            let d = MySqlFamilyDialect::mysql();
+            conn.query_drop(format!("USE {}", d.quote_ident(db))).await?;
         }
 
         let mut result = conn.query_iter(sql).await?;
@@ -88,12 +90,13 @@ impl MySqlDriver {
 
         let mut rows: Vec<Vec<CellValue>> = Vec::new();
         let mut truncated = false;
+        // 循环不变量：列语义在迭代前一次性收集
+        let sems: Vec<SemanticType> = columns.iter().map(|c| c.semantic).collect();
         while let Some(row) = result.next().await? {
             if (rows.len() as u32) >= max_rows {
                 truncated = true;
                 break;
             }
-            let sems: Vec<SemanticType> = columns.iter().map(|c| c.semantic).collect();
             rows.push(
                 (0..num_cols)
                     .map(|i| Self::to_cell(&row, i, sems[i]))

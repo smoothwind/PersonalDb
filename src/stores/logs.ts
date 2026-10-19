@@ -42,11 +42,12 @@ export const useLogStore = defineStore('logs', () => {
   /** 面板关闭期间新增的错误数（打开面板时清零，状态栏徽标用） */
   const unreadErrors = ref(0)
 
-  /** 追加一条日志（底部追加，超上限丢弃最旧） */
+  /** 追加一条日志（底部追加，超上限丢弃最旧；就地变更避免全量拷贝） */
   function push(e: Omit<LogEntry, 'id' | 'at'>): void {
-    entries.value = [...entries.value, { id: crypto.randomUUID(), at: Date.now(), ...e }].slice(
-      -MAX_ENTRIES,
-    )
+    entries.value.push({ id: crypto.randomUUID(), at: Date.now(), ...e })
+    if (entries.value.length > MAX_ENTRIES) {
+      entries.value.splice(0, entries.value.length - MAX_ENTRIES)
+    }
     if (e.level === 'error') unreadErrors.value++
   }
 

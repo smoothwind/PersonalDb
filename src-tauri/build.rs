@@ -28,8 +28,8 @@ fn build_oracle_bridge() {
     };
     let target = out_dir.join(exe_name);
 
-    println!("cargo:rerun-if-changed=oracle-bridge/main.go");
-    println!("cargo:rerun-if-changed=oracle-bridge/go.mod");
+    // 监视整个源目录：新增 .go 文件也能触发构建脚本重跑（目录递归扫描）
+    println!("cargo:rerun-if-changed=oracle-bridge");
 
     if Command::new("go").arg("version").output().is_err() {
         println!(
@@ -68,15 +68,12 @@ fn build_jdbc_bridge() {
     let out_jar = binaries_dir().join("jdbc-bridge.jar");
     let built_jar = src_dir.join("target").join("jdbc-bridge.jar");
 
+    // pom.xml + src/ 目录递归监视（不监视 target/，避免构建产物触发重跑）
     println!("cargo:rerun-if-changed=jdbc-bridge/pom.xml");
-    println!("cargo:rerun-if-changed=jdbc-bridge/src/main/java/personaldb/JdbcBridge.java");
+    println!("cargo:rerun-if-changed=jdbc-bridge/src");
 
     // 产物已最新则跳过（避免每次 cargo check 都调用 mvn）
-    if !sources_newer_than(
-        &src_dir,
-        &["pom.xml", "src/main/java/personaldb/JdbcBridge.java"],
-        &out_jar,
-    ) {
+    if !sources_newer_than(&src_dir, &["pom.xml", "src"], &out_jar) {
         return;
     }
 
@@ -136,17 +133,24 @@ fn run_maven_package(src_dir: &Path) -> std::io::Result<std::process::Output> {
     }
 }
 
-/// 任一源文件比 target 新（或 target 不存在）则返回 true（需要重新构建）
+/// 任一源文件（递归扫描目录）比 target 新（或 target 不存在）则返回 true（需要重新构建）
 fn sources_newer_than(src_dir: &Path, names: &[&str], target: &Path) -> bool {
     let Ok(target_time) = std::fs::metadata(target).and_then(|m| m.modified()) else {
         return true;
     };
-    for name in names {
-        if let Ok(t) = std::fs::metadata(src_dir.join(name)).and_then(|m| m.modified())
-            && t > target_time
-        {
-            return true;
+    fn newer_than(path: &Path, target_time: std::time::SystemTime) -> bool {
+        let Ok(meta) = std::fs::metadata(path) else {
+            return false;
+        };
+        if meta.is_file() {
+            return meta.modified().is_ok_and(|t| t > target_time);
         }
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return false;
+        };
+        entries
+            .filter_map(Result::ok)
+            .any(|e| newer_than(&e.path(), target_time))
     }
-    false
+    names.iter().any(|name| newer_than(&src_dir.join(name), target_time))
 }

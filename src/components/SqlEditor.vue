@@ -567,12 +567,6 @@ watch(
   },
 )
 watch(
-  () => prefs.editor.fontSize,
-  (size) => {
-    view?.dispatch({ effects: fontComp.reconfigure(fontTheme(size)) })
-  },
-)
-watch(
   () => prefs.editor.wrap,
   (wrap) => {
     view?.dispatch({ effects: wrapComp.reconfigure(wrap ? EditorView.lineWrapping : []) })

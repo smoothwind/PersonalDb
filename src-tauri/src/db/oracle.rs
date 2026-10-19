@@ -180,6 +180,9 @@ impl OracleDriver {
         }
     }
 
+    /// 单值/目录类查询的行数保护上限（与 bridge_driver 侧 10_000 对齐）
+    const MAX_QUERY_ROWS: usize = 10_000;
+
     fn blocking_query_strings(
         pool: &Pool,
         sql: &str,
@@ -197,6 +200,9 @@ impl OracleDriver {
         let num_cols = result_set.column_info().len();
         let mut out = Vec::new();
         for row_result in result_set {
+            if out.len() >= Self::MAX_QUERY_ROWS {
+                break;
+            }
             let row = row_result?;
             let values = row.sql_values();
             let mut line = Vec::with_capacity(num_cols);
@@ -568,3 +574,4 @@ impl DatabaseDriver for OracleDriver {
         Ok(out)
     }
 }
+

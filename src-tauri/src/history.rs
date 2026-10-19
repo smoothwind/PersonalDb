@@ -2,7 +2,7 @@
 //!
 //! 上限 500 条（插入后按 at 修剪），单条 SQL 截断 2000 字符；写入失败静默（不影响主流程）。
 
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use rusqlite::Connection;
 
@@ -97,7 +97,7 @@ impl HistoryStore {
     }
 
     pub fn list(&self, keyword: Option<&str>, limit: i64) -> DbResult<Vec<HistoryItem>> {
-        let conn = self.conn.lock().expect("history poisoned");
+        let conn = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
         let kw_raw = keyword.unwrap_or("").trim().to_string();
         let like = format!("%{}%", kw_raw.replace('%', ""));
         let mut stmt = conn
@@ -126,7 +126,7 @@ impl HistoryStore {
     }
 
     pub fn clear(&self) -> DbResult<()> {
-        let conn = self.conn.lock().expect("history poisoned");
+        let conn = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
         conn.execute("DELETE FROM history", [])
             .map_err(|e| AppError::General(format!("清空历史失败: {e}")))?;
         Ok(())

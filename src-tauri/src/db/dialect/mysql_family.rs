@@ -33,6 +33,25 @@ mod tests {
         assert_eq!(ob.server_locks_sql(), None);
         assert!(d.server_locks_sql().is_some());
     }
+
+    #[test]
+    fn dml_literal_escapes_backslash() {
+        let d = MySqlFamilyDialect::mysql();
+        let path = r"C:\new".to_string();
+        // 导出语义（文件头 NO_BACKSLASH_ESCAPES）：反斜杠字面量
+        assert_eq!(d.quote_string(&path), r"'C:\new'");
+        // DML 语义（会话默认模式）：反斜杠转义，避免 \n 被解析为换行
+        assert_eq!(
+            d.dml_literal(&CellValue::Text(path), SemanticType::Text),
+            r"'C:\\new'"
+        );
+        // 两条路径都成对转义单引号
+        assert_eq!(d.quote_string("a'b"), "'a''b'");
+        assert_eq!(
+            d.dml_literal(&CellValue::Text("a'b".into()), SemanticType::Text),
+            "'a''b'"
+        );
+    }
 }
 
 pub struct MySqlFamilyDialect {
@@ -59,6 +78,31 @@ impl MySqlFamilyDialect {
             DbObjectType::Procedure,
             DbObjectType::Trigger,
         ]
+    }
+
+    /// 字符串引用（escape_backslash = 服务器按反斜杠转义解析的会话语义）
+    fn quote_string_impl(&self, s: &str, escape_backslash: bool) -> String {
+        let inner = if escape_backslash {
+            s.replace('\\', "\\\\").replace('\'', "''")
+        } else {
+            s.replace('\'', "''")
+        };
+        format!("'{inner}'")
+    }
+
+    fn literal_impl(&self, v: &CellValue, semantic: SemanticType, escape_backslash: bool) -> String {
+        match v {
+            CellValue::Null => "NULL".into(),
+            CellValue::Bool(b) => if *b { "b'1'" } else { "b'0'" }.into(),
+            CellValue::Int(i) => i.to_string(),
+            CellValue::UInt(u) => u.to_string(),
+            CellValue::Float(f) => f.to_string(),
+            CellValue::Binary(b64) => format!("X'{}'", base64_to_hex(b64)),
+            CellValue::Text(s) => match semantic {
+                SemanticType::Binary => "NULL".into(),
+                _ => self.quote_string_impl(s, escape_backslash),
+            },
+        }
     }
 }
 
@@ -115,22 +159,17 @@ impl SqlDialect for MySqlFamilyDialect {
 
     fn quote_string(&self, s: &str) -> String {
         // 导出文件头已设置 NO_BACKSLASH_ESCAPES，反斜杠为字面量，仅转义单引号
-        format!("'{}'", s.replace('\'', "''"))
+        self.quote_string_impl(s, false)
     }
 
     fn literal(&self, v: &CellValue, semantic: SemanticType) -> String {
-        match v {
-            CellValue::Null => "NULL".into(),
-            CellValue::Bool(b) => if *b { "b'1'" } else { "b'0'" }.into(),
-            CellValue::Int(i) => i.to_string(),
-            CellValue::UInt(u) => u.to_string(),
-            CellValue::Float(f) => f.to_string(),
-            CellValue::Binary(b64) => format!("X'{}'", base64_to_hex(b64)),
-            CellValue::Text(s) => match semantic {
-                SemanticType::Binary => "NULL".into(),
-                _ => self.quote_string(s),
-            },
-        }
+        self.literal_impl(v, semantic, false)
+    }
+
+    /// DML 生成（会话内执行）：服务器默认模式无 NO_BACKSLASH_ESCAPES，
+    /// 含反斜杠的字符串值须转义，否则 UPDATE/DELETE 定位错位甚至语法错误
+    fn dml_literal(&self, v: &CellValue, semantic: SemanticType) -> String {
+        self.literal_impl(v, semantic, true)
     }
 
     fn insert_statement(
