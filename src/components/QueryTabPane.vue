@@ -717,7 +717,7 @@ import { useLogStore } from '../stores/logs'
 import { usePreferencesStore } from '../stores/preferences'
 import { useTabsStore, looksLikeConnError, type QueryTab } from '../stores/tabs'
 import { notifyFileSaved } from '../utils/notify'
-import { filterMatrix, cellText, type FilterOptions } from '../workers/filterCore'
+import { cellText } from '../workers/filterCore'
 import { useSnippetStore } from '../stores/snippets'
 import SnippetSettings from './SnippetSettings.vue'
 import HistoryPanel from './HistoryPanel.vue'
@@ -740,6 +740,8 @@ import { startWindowDrag } from '../utils/drag'
 import { dbExplain, dbRegistry, exportResultRows, dbExecute, dbListIndexes, dbSetAutocommit, dbCommit, dbRollback, dbBuildDml, saveTextFile, readTextFile } from '../api/db'
 import type { RowsExportFormat, SqlExportOptions, DmlRequest } from '../api/db'
 import { useWorkspaceStore } from '../stores/workspaces'
+import { useResultPipeline } from '../composables/useResultPipeline'
+import { useEditUndo, type EditRow } from '../composables/useEditUndo'
 import { ElMessage } from 'element-plus'
 import type { CellValue, PlanNode, SemanticType } from '../types/db'
 
@@ -1284,13 +1286,6 @@ async function confirmSqlExport(): Promise<void> {
 
 /* ================= 结果集编辑（增删改：预览 + 事务提交） ================= */
 
-interface EditRow {
-  orig: Record<string, CellValue>
-  values: Record<string, CellValue>
-  isNew: boolean
-  deleted: boolean
-}
-
 const editMode = ref(false)
 const editRows = ref<EditRow[]>([])
 const editingCell = ref<{ rid: number; prop: string } | null>(null)
@@ -1461,48 +1456,14 @@ function undoEditRow(idx: number): void {
 }
 
 // ---------- 编辑撤销/重做（Ctrl+Z / Ctrl+Y，栈深 50） ----------
-const editUndoStack = ref<EditRow[][]>([])
-const editRedoStack = ref<EditRow[][]>([])
-
-function snapshotEditRows(): EditRow[] {
-  return editRows.value.map((r) => ({
-    orig: { ...r.orig },
-    values: { ...r.values },
-    isNew: r.isNew,
-    deleted: r.deleted,
-  }))
-}
-
-function pushEditUndo(): void {
-  editUndoStack.value.push(snapshotEditRows())
-  if (editUndoStack.value.length > 50) editUndoStack.value.shift()
-  editRedoStack.value = []
-}
-
-function undoGridEdit(): void {
-  const snap = editUndoStack.value.pop()
-  if (!snap) return
-  editRedoStack.value.push(snapshotEditRows())
-  editRows.value = snap
-}
-
-function redoGridEdit(): void {
-  const snap = editRedoStack.value.pop()
-  if (!snap) return
-  editUndoStack.value.push(snapshotEditRows())
-  editRows.value = snap
-}
-
-function onEditKeydown(e: KeyboardEvent): void {
-  if (!editMode.value || editingCell.value) return
-  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
-    e.preventDefault()
-    undoGridEdit()
-  } else if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) {
-    e.preventDefault()
-    redoGridEdit()
-  }
-}
+const {
+  editUndoStack,
+  editRedoStack,
+  pushEditUndo,
+  undoGridEdit,
+  redoGridEdit,
+  onEditKeydown,
+} = useEditUndo(editRows, () => editMode.value && !editingCell.value)
 
 function buildDmlRequest(): DmlRequest {
   const cols = columns.value
@@ -1712,8 +1673,6 @@ onBeforeUnmount(() => {
   offCommand?.()
   sortable?.destroy()
   sortable = null
-  filterWorker?.terminate()
-  filterWorker = null
   boundScrollEl?.removeEventListener('scroll', onTableScroll)
   boundScrollEl = null
   unbindPaneEvents()
@@ -1968,115 +1927,19 @@ function isNumberLike(s: SemanticType): boolean {
   return s === 'number' || s === 'decimal'
 }
 
-// ================= 统一数据管线：矩阵 + 索引（Worker 过滤，≥3000 行移出主线程） =================
-
-/** 结果矩阵（后端原始行，零拷贝引用） */
-const matrix = computed(() => props.tab.result?.rows ?? [])
-
-/** prop 键（c{count}_{name}）→ 矩阵列下标 */
-const propIndex = computed(() => {
-  const result = props.tab.result
-  const m = new Map<string, number>()
-  if (!result) return m
-  const seen = new Map<string, number>()
-  result.columns.forEach((c, i) => {
-    const count = seen.get(c.name) ?? 0
-    seen.set(c.name, count + 1)
-    m.set(`c${count}_${c.name}`, i)
+// ================= 统一数据管线：矩阵 + 索引（composable：useResultPipeline） =================
+const { matrix, propIndex, filteredIdx, valueFilters, distinctCache, resultRows } =
+  useResultPipeline({
+    tab: () => props.tab,
+    colSettings,
+    searchApplied,
+    editMode,
   })
-  return m
-})
-
-/** 过滤后的行下标（唯一事实源；Worker 异步 / 同步回退共用同一 filterCore） */
-const filteredIdx = ref<number[]>([])
-const filterSeq = { n: 0 }
-let filterWorker: Worker | null = null
-const WORKER_THRESHOLD = 3000
-
-/** Excel 式列值筛选：prop → 选中的值列表（空数组=未启用） */
-const valueFilters = ref<Record<string, string[]>>({})
-const distinctCache = ref<Map<string, string[]>>(new Map())
-const DISTINCT_CAP = 200
-
-watch(
-  () => props.tab.result,
-  () => {
-    distinctCache.value = new Map()
-  },
-)
-
-function currentFilterOptions(): FilterOptions {
-  const colFilters: { col: number; q: string }[] = []
-  for (const [prop, s] of Object.entries(colSettings.value)) {
-    if (!s.filter) continue
-    const col = propIndex.value.get(prop)
-    if (col === undefined) continue
-    colFilters.push({ col, q: s.filter.toLowerCase() })
-  }
-  const vf: { col: number; values: string[] }[] = []
-  for (const [prop, values] of Object.entries(valueFilters.value)) {
-    if (!values || values.length === 0) continue
-    const col = propIndex.value.get(prop)
-    if (col === undefined) continue
-    vf.push({ col, values })
-  }
-  return { search: searchApplied.value.trim().toLowerCase(), colFilters, valueFilters: vf }
-}
-
-function applyFilterSync(): void {
-  filteredIdx.value = filterMatrix(matrix.value, currentFilterOptions())
-}
-
-function scheduleFilter(): void {
-  // 编辑态走 editData 渲染；小结果集同步计算（避免 postMessage 开销）
-  if (editMode.value || matrix.value.length < WORKER_THRESHOLD || typeof Worker === 'undefined') {
-    applyFilterSync()
-    return
-  }
-  if (!filterWorker) {
-    try {
-      filterWorker = new Worker(new URL('../workers/resultFilter.worker.ts', import.meta.url), {
-        type: 'module',
-      })
-      filterWorker.onmessage = (e: MessageEvent<{ token: number; indices: number[] }>) => {
-        if (e.data.token === filterSeq.n) filteredIdx.value = e.data.indices
-      }
-      filterWorker.onerror = () => {
-        filterWorker?.terminate()
-        filterWorker = null
-        applyFilterSync()
-      }
-    } catch {
-      filterWorker = null
-      applyFilterSync()
-      return
-    }
-  }
-  const token = ++filterSeq.n
-  filterWorker.postMessage({ token, rows: matrix.value, ...currentFilterOptions() })
-}
-
-watch(
-  [searchApplied, valueFilters, colSettings, () => props.tab.result, () => editMode.value],
-  () => scheduleFilter(),
-  { immediate: true },
-)
-
-/** 物化对象行（按需；仅 el-table 渲染 / 复制 / 导出 / 统计触达，虚拟路径零分配） */
-const resultRows = computed(() => {
-  const keys = [...propIndex.value.keys()]
-  const m = matrix.value
-  return filteredIdx.value.map((i) => {
-    const src = m[i]
-    const o: Record<string, CellValue> = {}
-    keys.forEach((k, c) => {
-      o[k] = src[c]
-    })
-    return o
-  })
-})
 
 // ================= 结果集增强（统计 / 列宽 / 长文卡 / 粘贴建行） =================
+
+/** 列 distinct 值上限 */
+const DISTINCT_CAP = 200
 
 /** 列 distinct 值（cap 200，按原始矩阵计算，缓存至结果变更） */
 function distinctOf(prop: string): string[] {
