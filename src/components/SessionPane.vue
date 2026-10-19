@@ -274,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleClose, CloseBold } from '@element-plus/icons-vue'
@@ -906,11 +906,13 @@ async function exportCsv(): Promise<void> {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+/** KeepAlive 激活状态：隐藏期间不建刷新定时器，避免后台轮询 */
+let paneAlive = true
 
 function resetTimer(): void {
   if (timer) clearInterval(timer)
   timer = null
-  if (intervalSec.value > 0) {
+  if (paneAlive && intervalSec.value > 0) {
     timer = setInterval(() => {
       if (loading.value || document.hidden) return
       void load()
@@ -919,6 +921,19 @@ function resetTimer(): void {
 }
 
 watch(intervalSec, resetTimer)
+
+// KeepAlive 生命周期：隐藏暂停自动刷新，重新激活立即恢复
+onActivated(() => {
+  paneAlive = true
+  resetTimer()
+})
+onDeactivated(() => {
+  paneAlive = false
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+})
 
 void (async () => {
   await ensureCap()

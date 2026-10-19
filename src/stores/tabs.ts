@@ -113,10 +113,10 @@ export const useTabsStore = defineStore('tabs', () => {
     /** 强制新建（跳过“同连接空 Tab 复用”） */
     force?: boolean
   }): QueryTab {
-    // 复用同连接的空白 Tab，避免 Tab 泛滥（force 时跳过）
-    if (!input.force && !input.sql && !input.title) {
+    // 复用同连接的空白查询 Tab，避免 Tab 泛滥（force 时跳过；仅 query 类型，防止误激活空表/对象/会话面板）
+    if (!input.force && !input.sql && !input.title && (input.type ?? 'query') === 'query') {
       const reusable = tabs.value.find(
-        (t) => t.connectionId === input.connectionId && !t.sql.trim(),
+        (t) => t.connectionId === input.connectionId && t.type === 'query' && !t.sql.trim(),
       )
       if (reusable) {
         if (input.database) reusable.database = input.database

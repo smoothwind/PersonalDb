@@ -42,15 +42,33 @@
         <div class="tab-body" :class="{ 'is-split': splitActive, 'dir-v': splitDir === 'v' }">
           <template v-if="splitActive && splitTab">
             <div class="pane-slot pane-a" :style="paneAstyle">
-              <component :is="paneComp(tabsStore.activeTab)" v-if="tabsStore.activeTab" :key="tabsStore.activeTab.id" :tab="tabsStore.activeTab" />
+              <!-- KeepAlive 保活页签面板：切换不再销毁重建（CodeMirror/列设置/编辑态得以保留）；
+                   key 加槽位前缀，避免同页签在分屏双槽同键导致缓存实例被两处共享 -->
+              <KeepAlive :max="12">
+                <component
+                  :is="paneComp(tabsStore.activeTab)"
+                  v-if="tabsStore.activeTab"
+                  :key="`m-${tabsStore.activeTab.id}`"
+                  :tab="tabsStore.activeTab"
+                />
+              </KeepAlive>
             </div>
             <div class="splitter" @mousedown="startSplitDrag" />
             <div class="pane-slot pane-b">
-              <component :is="paneComp(splitTab)" :key="splitTab.id" :tab="splitTab" />
+              <KeepAlive :max="12">
+                <component :is="paneComp(splitTab)" :key="`s-${splitTab.id}`" :tab="splitTab" />
+              </KeepAlive>
             </div>
           </template>
           <div v-else class="pane-slot">
-            <component :is="paneComp(tabsStore.activeTab)" v-if="tabsStore.activeTab" :key="tabsStore.activeTab.id" :tab="tabsStore.activeTab" />
+            <KeepAlive :max="12">
+              <component
+                :is="paneComp(tabsStore.activeTab)"
+                v-if="tabsStore.activeTab"
+                :key="`m-${tabsStore.activeTab.id}`"
+                :tab="tabsStore.activeTab"
+              />
+            </KeepAlive>
           </div>
         </div>
       </template>

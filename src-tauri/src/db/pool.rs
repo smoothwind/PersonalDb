@@ -108,9 +108,10 @@ impl ConnectionManager {
         self.sessions
             .lock()
             .expect("connection manager poisoned")
-            .values()
-            .map(|s| SessionInfo {
-                session_id: s.config.id.clone(),
+            .iter()
+            .map(|(id, s)| SessionInfo {
+                // 必须返回 Map key（内部会话 ID）：前端按 session_id 寻址的命令都走 get_session（按 key 查）
+                session_id: id.clone(),
                 config: s.config.clone(),
                 server_info: crate::db::types::ServerInfo {
                     kind_label: s.config.kind.display_name().to_string(),
@@ -130,20 +131,27 @@ impl ConnectionManager {
     }
 
     /// 启动保活循环：每 55s 对全部会话执行 ping，防止服务端超时静默断连（如 MySQL wait_timeout）
+    ///
+    /// 各会话 ping 并发执行且带单次超时：单个半开死连接不再阻塞/挂起整个保活轮询。
     pub fn spawn_keepalive(handle: tauri::AppHandle) {
+        use futures_util::future::join_all;
         use tauri::Manager;
+        const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
         tauri::async_runtime::spawn(async move {
             let state = handle.state::<ConnectionManager>();
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(55));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
-                for s in state.sessions_snapshot() {
+                let pings = state.sessions_snapshot().into_iter().map(|s| async move {
                     let name = s.config.name.clone();
-                    if let Err(e) = s.driver.ping().await {
-                        log::warn!("keepalive ping failed (conn {name}): {e}");
+                    match tokio::time::timeout(PING_TIMEOUT, s.driver.ping()).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => log::warn!("keepalive ping failed (conn {name}): {e}"),
+                        Err(_) => log::warn!("keepalive ping timeout (conn {name})"),
                     }
-                }
+                });
+                join_all(pings).await;
             }
         });
     }

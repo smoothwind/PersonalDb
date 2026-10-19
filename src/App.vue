@@ -725,11 +725,26 @@ onMounted(() => {
 })
 
 // 页签变化（增删/标题/SQL）自动快照到当前工作区（存储侧防抖）
-watch(
-  () => tabsStore.tabs,
-  () => workspaceStore.syncTabs(),
-  { deep: true },
+// 浅层投影监听：仅跟踪快照所需标量字段（与 exportSnapshot 对齐），
+// 避免 deep watch 递归遍历 result.rows 等大对象（可达上万行）造成的持续开销
+const tabSnapshotSig = computed(() =>
+  tabsStore.tabs.map(
+    (t): unknown[] => [
+      t.type,
+      t.title,
+      t.connectionId,
+      t.connectionName,
+      t.kind,
+      t.database,
+      t.sql,
+      t.icon,
+      t.table,
+      t.objectName,
+      t.objType,
+    ],
+  ),
 )
+watch(tabSnapshotSig, () => workspaceStore.syncTabs())
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown)

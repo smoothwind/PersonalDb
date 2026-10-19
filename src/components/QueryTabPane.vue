@@ -695,7 +695,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Sortable from 'sortablejs'
 import { save as saveDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -1681,11 +1681,22 @@ function handleAppCommand(payload: { cmd: string; tabId?: string }): void {
   }
 }
 
-onMounted(async () => {
-  offCommand = onAppCommand(handleAppCommand)
+/** 全局键盘/粘贴监听（KeepAlive 下随激活状态启停：隐藏的页签不响应用户按键） */
+function bindPaneEvents(): void {
   window.addEventListener('keydown', onGlobalKeydown)
   window.addEventListener('keydown', onEditKeydown)
   window.addEventListener('paste', onGridPaste)
+}
+
+function unbindPaneEvents(): void {
+  window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('keydown', onEditKeydown)
+  window.removeEventListener('paste', onGridPaste)
+}
+
+onMounted(async () => {
+  offCommand = onAppCommand(handleAppCommand)
+  bindPaneEvents()
   if (connStore.isConnected(props.tab.connectionId)) {
     databases.value = await connStore
       .listDatabases(props.tab.connectionId)
@@ -1708,10 +1719,13 @@ onBeforeUnmount(() => {
   filterWorker = null
   boundScrollEl?.removeEventListener('scroll', onTableScroll)
   boundScrollEl = null
-  window.removeEventListener('keydown', onGlobalKeydown)
-  window.removeEventListener('keydown', onEditKeydown)
-  window.removeEventListener('paste', onGridPaste)
+  unbindPaneEvents()
 })
+
+// KeepAlive 生命周期：onMounted 与 onActivated 首次会先后触发，addEventListener 按
+// 同一函数引用去重，不会重复注册；onDeactivated 移除保证隐藏页签不抢全局按键/粘贴
+onActivated(bindPaneEvents)
+onDeactivated(unbindPaneEvents)
 
 /** 执行：auto=有选中执行选中否则全部 / all=全部 / selection=选中 / line=当前行 */
 async function run(mode: 'all' | 'selection' | 'line' | 'auto'): Promise<void> {
