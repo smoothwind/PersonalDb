@@ -22,7 +22,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 
 ## 架构
 
-- `src/` Vue 3 前端（单窗口布局，无路由）：`App.vue`（**菜单栏（最顶）→ 工具栏 → 连接树 → 查询 Tabs → 状态栏**，主题切换 + 首选项）、`api/db.ts`（invoke 封装）、`stores/`（connections 多会话 Map / tabs 查询 Tab / snippets 快捷指令 / preferences 偏好）、`types/db.ts`（与 Rust serde camelCase 对齐的类型）、`utils/objectIcons.ts`（**对象类型→图标统一映射**）、`components/`（ConnectionTree 连接树（对象分组/搜索/右键菜单）、QueryTabPane 查询面板（可编辑 SQL + 结果集增强）、**TableInspectorPane 表查看面板（列/索引/源码 Tab，支持编辑与变更预览执行）**、ObjectInspector 只读对象查看器（非表对象定义）、RoutineEditor 例程编辑器（存储过程/函数）、CodeViewer 只读代码视图、SqlEditor 可编辑 CM6 编辑器、SnippetSettings、ConnectionForm、DbLogo、WelcomePane）
+- `src/` Vue 3 前端（单窗口布局，无路由）：`App.vue`（**菜单栏（最顶）→ 工具栏 → 连接树 → 查询 Tabs → 状态栏**，主题切换 + 首选项）、`api/db.ts`（invoke 封装）、`stores/`（connections 多会话 Map / tabs 查询 Tab / snippets 快捷指令 / preferences 偏好）、`composables/`（useResultPipeline 结果集数据管线（矩阵+过滤 Worker+物化行）/ useEditUndo 编辑撤销栈）、`types/db.ts`（与 Rust serde camelCase 对齐的类型）、`utils/objectIcons.ts`（**对象类型→图标统一映射**）、`components/`（ConnectionTree 连接树（对象分组/搜索/右键菜单）、QueryTabPane 查询面板（可编辑 SQL + 结果集增强）、**TableInspectorPane 表查看面板（列/索引/源码 Tab，支持编辑与变更预览执行）**、ObjectInspector 只读对象查看器（非表对象定义）、RoutineEditor 例程编辑器（存储过程/函数）、CodeViewer 只读代码视图、SqlEditor 可编辑 CM6 编辑器、SnippetSettings、ConnectionForm、DbLogo、WelcomePane）
 - `site/` GitHub Pages 项目主页（单页静态站点：介绍 / 下载入口 / 系统要求；`site/index.html` 内联 CSS+JS，版本号与安装包直链由前端实时读 GitHub Releases 填入，失败回退 Releases 链接；不走 Vite 构建，由 `.github/workflows/pages.yml` 部署）
 - **Tab 类型约定**：`QueryTab.type` 为 `'query'`（查询编辑器）/ `'table'`（表查看面板）/ `'object'`（对象定义查看）/ `'routine'`（例程编辑器）/ `'session'`（数据库会话管理）；App.vue 按 type 分派 `QueryTabPane` / `TableInspectorPane` / `ObjectInspector` / `RoutineEditor` / `SessionPane`；**对象查看与例程编辑一律以 Tab 形式，禁止抽屉组件**；面板经 `openTableInspector/openObjectInspector/openRoutineEditor/openSessionManager`（按连接+库+对象去重）
 - 交互约定：连接树单击表仅选中，双击表/视图打开 SQL 编辑器并生成预览 SQL（不自动执行）；**双击连接节点=连接并加载库列表；树展开不作为连接触发器**（未连接节点展开为空，防断开后刷新/启动恢复隐式重连），右键未连接节点首项为「连接」；右键节点管理（新建查询/编辑/断开/删除/导出/新建表/查看结构/查看源码/编辑例程/重新编译）；**表的结构与源码走「表查看面板」Tab，非表对象定义走「对象查看面板」Tab，例程走「例程编辑」Tab（均为 Tab，禁用抽屉）**；查询 Tab 只承担可编辑 SQL（选中执行、快捷指令展开、方言格式化、执行计划）；**查询页签双击标题可重命名**
@@ -49,7 +49,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - i18n 校验约定：`npm run check:i18n`（`scripts/check-i18n.mts`，node strip-types 递归对比 zh/en 叶子 key，缺失即非零退出；**需 Node 22.6+**，Node 20 报 `bad option: --experimental-strip-types`）；CI（`.github/workflows/ci.yml`）强制执行
 - 虚拟滚动约定：结果集 >600 行且非编辑态走 `ResultVirtualGrid.vue`（el-table-v2，排序+右键复制），否则完整 el-table；行对象按 `c{count}_{name}` prop 键，虚拟模式需转矩阵
 - 多结果集约定：非 Oracle 连接 `splitStatements` 分割后逐条执行（`runMultiStatements`），`tab.multiResults/activeResultIndex` + segmented 切换；Oracle 含 PL/SQL 块跳过分割
-- 编辑撤销约定：`editUndoStack/editRedoStack` 全量快照（上限 50），五类变更入口均需 `pushEditUndo()`；Ctrl+Z/Ctrl+Y 经 `onEditKeydown`（编辑态且非单元格输入中）
+- 编辑撤销约定：`editUndoStack/editRedoStack` 全量快照（上限 50），五类变更入口均需 `pushEditUndo()`；Ctrl+Z/Ctrl+Y 经 `onEditKeydown`（编辑态且非单元格输入中）；逻辑抽为 `composables/useEditUndo.ts`
 - 历史存储约定：SQLite（`history.rs`，存储类别 History/`history.db`，上限 500，WAL）；`stores/history.ts` 后端化（旧 localStorage 首次迁移），`push` 乐观插入
 - 更新约定：`stores/update.ts` 统一检测（**无自动检测**：仅帮助菜单「检查更新」/首选项按钮手动触发 → `fetch` GitHub `releases/latest` → `utils/version.ts#compareVersions` 与 `getVersion()` 比较）；命中后状态栏常驻入口（点击 `opener.openUrl` 打开发布页）+ 帮助菜单红点，可「不再提示此版本」（跳过版本存 `personaldb.update`）；**不下载安装、不需要签名密钥**；端点仓库 `GITHUB_REPO` 常量与发布链路（tauri-action 草稿 Release）见 SPEC-DEV-2；**发版需同步版本号 8 处**（`tauri.conf.json`、`package.json`、`package-lock.json`×2、`Cargo.toml`、`Cargo.lock` + 界面硬编码 `App.vue` 状态栏/`AboutDialog.vue`/`SettingsDialog.vue`），标签含 `-` 时自动标记 pre-release
 - 日志约定：后端 `tauri-plugin-log`（stdout + `logs/personaldb.log` 自动轮转 + WebView 控制台；debug 构建 Debug 级、release Info 级）；`AppError` 实现 Drop 日志（未处理错误零侵入落盘；**可预期的服务端拒绝/配置类错误降级为 WARN**，如 OB Oracle 租户 1235、认证失败、对象不存在）；panic hook 记录崩溃。前端 `utils/logger.ts`（attachConsole 转发 + 全局 error/unhandledrejection/Vue errorHandler），关键业务点（连接/SQL 执行/导出失败）调用 `logger`。**日志禁止打印密码**；SQL 仅记录前 200 字符且失败时才落盘完整前缀
@@ -69,10 +69,10 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
   - `export.rs` 导出引擎（SQL=DDL+方言 INSERT / CSV / Excel，文件路径由前端 save 对话框提供）
   - `plan.rs` 执行计划（PlanNode + MySQL/PG JSON 计划解析器；Oracle capability 关闭）
   - `mysql.rs`/`postgres.rs`/`oracle.rs` 连接传输实现（连接池 + 结果集拉取 + semantic 推断 + 二进制 base64）
-  - `bridge.rs` + `bridge_driver.rs` **内置桥接驱动**（免 OCI，NDJSON over stdio）：真实 Oracle 走 oracle-bridge（Go + go-ora），OceanBase Oracle 走 jdbc-bridge（Java + OceanBase Connector/J——OceanBase 的 Oracle 模式本质是 **MySQL 协议 + OB 扩展能力位** `OB_CLIENT_SUPPORT_ORACLE_MODE`，标准 Oracle TNS 客户端无法连接）；`pool.rs` 默认优先内置桥接，`params.driver == "oci"` 或桥接缺失时回退 `oracle.rs`
+  - `bridge.rs` + `bridge_driver.rs` **内置桥接驱动**（免 OCI，NDJSON over stdio）：真实 Oracle 走 oracle-bridge（Go + go-ora），OceanBase Oracle 走 jdbc-bridge（Java + OceanBase Connector/J——OceanBase 的 Oracle 模式本质是 **MySQL 协议 + OB 扩展能力位** `OB_CLIENT_SUPPORT_ORACLE_MODE`，标准 Oracle TNS 客户端无法连接）；`pool.rs` 默认优先内置桥接，`params.driver == "oci"` 或桥接缺失时回退 `oracle.rs`；**桥接/JDBC 驱动 `execute` 前做会话内 schema 切换**（桥接 fail-hard `ALTER SESSION SET CURRENT_SCHEMA`；JDBC 按 `driver_class` 嗅探 best-effort；`ping` 直连 query 不打断状态；OCI 连接池不支持，沿用 owner 过滤）
   - `pool.rs` 驱动工厂 `create_driver` + 会话管理器
   - `jdbc_driver.rs` + 存储类别 `drivers`（`drivers.json`）：**JDBC 驱动管理**（名称/驱动类/URL 模板/默认端口/本地 jar 列表，内置 OceanBase 预设）；`jdbc.rs` **通用 JDBC 连接类型**（`DbKind::Jdbc`，对象树走 JDBC `DatabaseMetaData`，方言为保守 ANSI 的 `dialect/generic.rs`）；`bridge.rs` 泛化支持 `-cp` 附加用户驱动 jar
-- `src-tauri/src/commands.rs` 全部 Tauri 命令；`error.rs` 统一错误（实现 Serialize，含 XlsxError 转换）
+- `src-tauri/src/commands.rs` 全部 Tauri 命令；`error.rs` 统一错误（实现 Serialize，含 XlsxError 转换）；`save_text_file/read_text_file` **拒绝触碰存储目录内敏感数据文件**（防前端注入读写凭据/配置，`is_storage_guarded_file` 规范化路径比对）
 
 ## 约定与注意事项
 

@@ -516,6 +516,7 @@
   - **OceanBase Oracle** → `ob-jdbc-bridge`（Java + OceanBase Connector/J），`build.rs` 调 Maven 打包 fat jar（**需 JRE 21+**）。
   - OceanBase 的 Oracle 模式本质是 **MySQL 协议 + OB 扩展能力位**（capability bit 27 `OB_CLIENT_SUPPORT_ORACLE_MODE`，服务端 `obmp_connect.cpp` 校验），标准 Oracle TNS 客户端（go-ora）无法连接 → 必须用 OB 官方驱动。缺 Go/Maven 则跳过并告警。
 - **选择规则**（`db/pool.rs#create_driver`）：`params.driver == "oci"` → OCI 驱动；否则对应内置桥接可用 → 桥接驱动；桥接缺失 → 回退 OCI 驱动。
+- **会话内 schema 切换**：桥接驱动 `execute` 前按 UI 选中库执行 `ALTER SESSION SET CURRENT_SCHEMA`（标识符经方言 `quote_ident` 转义；库切换跟踪 `current_schema`，`None` 复位为用户默认 schema，兼容 OB `user@tenant` 用户名取 user 部分）；切换失败 fail-hard；`ping` 直连 `query` 绕过切换逻辑（不打断会话内状态）。OCI 驱动连接池跨连接持有，**不做** schema 切换（沿用 owner 过滤语义）；元数据查询走 `user_*/all_*` + owner 绑定，不依赖 CURRENT_SCHEMA。
 - **连接表单**：Oracle / OceanBase Oracle 类型展示「连接方式」下拉（内置驱动 / OCI 客户端），写入 `params.driver`；内置驱动不可用时该选项禁用并提示。OceanBase Oracle 的用户名提示 `用户@租户`，库名字段为 **Schema（留空默认 = 用户名）**。
 - **验收**：未安装任何 OCI 库时可连接 Oracle / OceanBase Oracle；`cargo test --lib` 的 `db::bridge::tests` 验证两类 sidecar ping 往返；`--no-default-features` 下仍可用内置驱动。
 - **落点**：`src-tauri/build.rs`、`src-tauri/oracle-bridge/`、`src-tauri/ob-jdbc-bridge/`、`db/bridge.rs`、`db/bridge_driver.rs`、`db/pool.rs`、`tauri.conf.json#bundle.resources`、`commands.rs#bridge_status`、`ConnectionForm.vue`（文案 `form.oracleDriver` 等）。
@@ -526,6 +527,7 @@
 - **驱动模型**（`db/jdbc_driver.rs`，持久化 `drivers.json`）：`{ id, name, driverClass, urlTemplate, defaultPort, jars[], builtin }`；内置 OceanBase 预设（`builtin=true` 只读、可复制）。驱动来源**仅本地 jar/目录**。
 - **驱动管理**（工具 → 驱动管理，`DriverManager.vue`）：列表 + 新建/复制/编辑/删除；表单含驱动类、URL 模板、默认端口、本地 jar/目录列表；**查找类**（`jdbc_driver_scan_classes` 经 ServiceLoader 扫描）。
 - **连接类型**：`DbKind::Jdbc`；`db/jdbc.rs#GenericJdbcDriver` 经 jdbc-bridge（`java -cp "<jdbc-bridge.jar>;<jars>" personaldb.JdbcBridge`）连接；URL 取参数 `jdbcUrl` 或由驱动 `urlTemplate` 结合 host/port/database 生成；对象树走 JDBC `DatabaseMetaData`（`metaTables/metaColumns/metaIndexes/...`），方言为 `dialect/generic.rs`（保守 ANSI，`catalog_query` 的 `sql` 仅作类型标记）。
+- **会话内 schema 切换**：`execute` 前 best-effort 切换——按 `driver_class` 小写嗅探方言（oracle → `ALTER SESSION SET CURRENT_SCHEMA`；mysql/mariadb/oceanbase → `USE`；postgresql/pgjdbc → `SET search_path`；未知驱动跳过），失败仅 WARN 不中断用户查询；无论成败记录尝试值（避免逐查询重试），`None` 复位为连接默认；`ping` 直连 `query` 绕过切换。
 - **验收**：驱动管理可增删改并扫描驱动类；JDBC 连接表单可选驱动；真机连接 OceanBase（`builtin-oceanbase`）可列出 schema/表。
 - **落点**：`src-tauri/jdbc-bridge/`、`db/jdbc_driver.rs`、`db/jdbc.rs`、`db/dialect/generic.rs`、`db/bridge.rs`、`db/pool.rs`、`storage.rs#StorageCategory::Drivers`、`commands.rs#jdbc_driver_*`、`DriverManager.vue`、`ConnectionForm.vue`、`types/db.ts`。
 
@@ -601,7 +603,7 @@
 ## SPEC-UI-17 查询面板：快速重连与 SQL 脚本存取
 
 - **快速重连**：查询工具栏在连接离线时显示「重新连接」按钮（`connStore.isConnected` 判定），点击 `tabs.reconnect` 关闭旧会话并重开（成功后刷新库列表），免去进连接管理器。
-- **SQL 脚本存取**：工具栏「保存 SQL 至文件」（系统保存框 → `save_text_file`）与「从文件打开 SQL」（`read_text_file`）；**加载后弹窗提示选择连接**（连接下拉），确认后重绑 `connectionId/connectionName/kind`、重置 `database` 与结果。
+- **SQL 脚本存取**：工具栏「保存 SQL 至文件」（系统保存框 → `save_text_file`）与「从文件打开 SQL」（`read_text_file`）；**加载后弹窗提示选择连接**（连接下拉），确认后重绑 `connectionId/connectionName/kind`、重置 `database` 与结果。两命令**拒绝触碰存储目录内敏感数据文件**（connections/groups/snippets/workspaces/drivers/history，`is_storage_guarded_file` 规范化路径比对）——前端若被注入，任意文件读写不得波及凭据与配置。
 - **落点**：`commands.rs#save_text_file/read_text_file`、`stores/tabs.ts#reconnect`、`QueryTabPane.vue`。
 
 ## SPEC-CONN-4 密码安全存储（系统凭据管理器）
@@ -678,7 +680,7 @@
 
 ## SPEC-RESULT-10 网格编辑撤销 / 重做
 
-- 编辑模式全量快照栈（上限 50）：覆盖 单元格提交/新增/复制/标记删除/行级还原 五类变更；`Ctrl+Z` / `Ctrl+Y`（或 Ctrl+Shift+Z）+ 工具栏按钮；进入编辑或退出时清栈。
+- 编辑模式全量快照栈（上限 50）：覆盖 单元格提交/新增/复制/标记删除/行级还原 五类变更；`Ctrl+Z` / `Ctrl+Y`（或 Ctrl+Shift+Z）+ 工具栏按钮；进入编辑或退出时清栈。逻辑抽为 `composables/useEditUndo.ts`（栈与快捷键判定，`EditRow` 类型随迁）。
 
 ## SPEC-EDITOR-9 查询历史（SQLite 持久化）
 
@@ -737,6 +739,7 @@
 - **管线**：`filteredIdx: number[]` 为过滤唯一事实源；过滤核心 `workers/filterCore.ts` 纯函数（全局查找 + 列包含 + 值集合精确，NULL→`NULL` 文本化），主线程同步与 Worker **共用同一实现**（语义一致）。≥3000 行走 Worker（token latest-wins；Worker 失败自动回退同步）；编辑态强制同步。
 - **消费**：`resultRows` = 按需物化对象视图（el-table 渲染/复制/导出/统计触达才构建；**虚拟路径模板不触达 → 零对象分配**）；虚拟网格行 = `filteredIdx.map(i => matrix[i])` **零拷贝引用切片**，列携带 `srcIndex` 直读源矩阵（排序/取值/NULL 灰斜体一致）。
 - **明确不做**：导出 Worker（后端为瓶颈）；列虚拟化（el-table-v2 不支持）；双渲染器完全统一（数据管线已统一，特性差异见 SPEC-RESULT-11）。
+- **落点**：管线整体抽为 `composables/useResultPipeline.ts`（QueryTabPane 仅消费 `matrix/propIndex/filteredIdx/valueFilters/distinctCache/resultRows`；Worker 生命周期随 composable 卸载自清理）。
 
 ## 备注
 
