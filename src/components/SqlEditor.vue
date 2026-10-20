@@ -25,6 +25,7 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentMore } from '@codemirror/commands'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { showMinimap } from '@replit/codemirror-minimap'
 import {
   bracketMatching,
   defaultHighlightStyle,
@@ -73,7 +74,7 @@ const emit = defineEmits<{
   (e: 'format'): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const prefs = usePreferencesStore()
 const snippetStore = useSnippetStore()
 const connStore = useConnectionStore()
@@ -92,9 +93,48 @@ const indentComp = new Compartment()
 const keymapComp = new Compartment()
 /** 只读开关 */
 const readonlyComp = new Compartment()
+/** CodeMirror 内置面板文案（查找/替换/转到行/折叠）随语言热切换 */
+const phraseComp = new Compartment()
+/** 代码缩略图开关 */
+const minimapComp = new Compartment()
 
 function readonlyExt(ro: boolean): Extension {
   return ro ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []
+}
+
+/** CM6 内置 UI 短语本地化（键为 CM 源文案，逐字匹配） */
+function phrasesExt(): Extension {
+  return EditorState.phrases.of({
+    Find: t('cm.find'),
+    Replace: t('cm.replace'),
+    next: t('cm.next'),
+    previous: t('cm.previous'),
+    all: t('cm.all'),
+    'Replace all': t('cm.replaceAll'),
+    close: t('cm.close'),
+    'current match': t('cm.currentMatch'),
+    'replaced $ matches': t('cm.replacedMatches'),
+    'replaced match on line $': t('cm.replacedMatchOnLine'),
+    'on line': t('cm.onLine'),
+    'Go to line': t('cm.gotoLine'),
+    go: t('cm.go'),
+    'Folded lines': t('cm.foldedLines'),
+    'Unfolded line': t('cm.unfoldedLine'),
+  })
+}
+
+/** 缩略图（VSCode 式缩放文本；短文档时 minimap 反而碍事 → 由偏好控制） */
+function minimapExt(): Extension {
+  if (!prefs.editor.minimap) return []
+  return showMinimap.compute(['doc'], () => ({
+    create: () => {
+      const dom = document.createElement('div')
+      dom.className = 'cm-minimap'
+      return { dom }
+    },
+    displayText: 'characters',
+    showOverlay: 'always',
+  }))
 }
 
 /** 展开的占位符状态 */
@@ -427,6 +467,8 @@ const SQL_KEYWORDS = [
 ]
 
 function buildExtensions() {  return [
+    phraseComp.of(phrasesExt()),
+    minimapComp.of(minimapExt()),
     gutterComp.of(gutterExt(prefs.editor.lineNumbers)),
     history(),
     drawSelection(),
@@ -578,6 +620,17 @@ watch(
     view?.dispatch({ effects: gutterComp.reconfigure(gutterExt(show)) })
   },
 )
+// 语言切换 → 内置面板文案热切换
+watch(locale, () => {
+  view?.dispatch({ effects: phraseComp.reconfigure(phrasesExt()) })
+})
+// 缩略图开关实时生效
+watch(
+  () => prefs.editor.minimap,
+  () => {
+    view?.dispatch({ effects: minimapComp.reconfigure(minimapExt()) })
+  },
+)
 
 defineExpose({
   /** 当前选中文本（无选区返回空串） */
@@ -643,5 +696,14 @@ defineExpose({
 
 .sql-editor-host :deep(.cm-editor.cm-focused) {
   outline: none;
+}
+
+/* 缩略图容器（内容由 codemirror-minimap 绘制） */
+.sql-editor-host :deep(.cm-minimap) {
+  width: 84px;
+  height: 100%;
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color-lighter);
+  opacity: 0.85;
 }
 </style>

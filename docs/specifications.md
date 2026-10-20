@@ -39,13 +39,16 @@
   1. 按当前数据库类型加载**不同语法高亮**（MySQL / PostgreSQL / PLSQL）；
   2. 支持常见编辑操作（撤销重做、搜索、括号匹配、自动缩进、行号、自动换行可配置）；
   3. 支持**大小写转换**，且**字符串字面值不得被转换**；
-  4. 支持**压缩 SQL**（去注释与多余空白、折叠为单行，字面值保持原样）。
+  4. 支持**压缩 SQL**（去注释与多余空白、折叠为单行，字面值保持原样）；
+  5. 编辑器右侧提供**代码缩略图**（minimap，VSCode 式缩放文本 + 视口指示），可经首选项关闭。
 - **验收**：
   - 编辑器为 CodeMirror 6；切换 Tab 到不同方言连接时高亮方案随之切换；
   - `Ctrl+Shift+F` 格式化、`Ctrl+Enter` 执行、`Ctrl+U / Ctrl+Shift+U` 大写/小写、`Ctrl+Alt+K` 压缩；
   - 大小写转换与压缩均跳过 `'...'`、`"..."`、`` `...` `` 及其 `''`/`""` 转义；
-  - 无选区时转换光标所在标识符；压缩默认快捷键可在快捷键设置中修改。
-- **落点**：`components/SqlEditor.vue`（`dialectOf`、`convertOutsideLiterals`、`compressCode`、keymap）、`utils/sqlFormat.ts#formatSql/compressSql`。
+  - 无选区时转换光标所在标识符；压缩默认快捷键可在快捷键设置中修改；
+  - 查找/替换、转到行、折叠等 **CodeMirror 内置面板文案走 i18n**（`EditorState.phrases`，`cm.*` 键，语言切换实时生效，无需重建编辑器）；
+  - 缩略图经 `@replit/codemirror-minimap`（`displayText: 'characters'`），偏好 `editor.minimap`（默认开）热切换；随 SqlEditor 生效于查询/例程/表查看等全部宿主。
+- **落点**：`components/SqlEditor.vue`（`dialectOf`、`convertOutsideLiterals`、`compressCode`、`phrasesExt`、`minimapExt`、keymap）、`utils/sqlFormat.ts#formatSql/compressSql`、`stores/preferences.ts#editor.minimap`。
 
 ## SPEC-EDITOR-2 快捷指令（扩充既有）
 

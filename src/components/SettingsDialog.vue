@@ -126,6 +126,12 @@
                 @update:model-value="(v: string | number | boolean) => prefs.updateEditor({ upperCaseKeywords: Boolean(v) })"
               />
             </el-form-item>
+            <el-form-item :label="t('settings.editorMinimap')">
+              <el-switch
+                :model-value="prefs.editor.minimap"
+                @update:model-value="(v: string | number | boolean) => prefs.updateEditor({ minimap: Boolean(v) })"
+              />
+            </el-form-item>
 
             <div class="pref-section">
               {{ t('settings.formatSection') }}

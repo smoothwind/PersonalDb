@@ -17,6 +17,8 @@ export interface EditorPrefs {
   tabSize: number
   /** 关键字大写高亮 */
   upperCaseKeywords: boolean
+  /** 代码缩略图（minimap，编辑器右侧） */
+  minimap: boolean
 }
 
 /** 源码查看器偏好（只读代码视图） */
@@ -245,6 +247,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       lineNumbers: true,
       tabSize: 2,
       upperCaseKeywords: false,
+      minimap: true,
     }),
   )
   const result = reactive<ResultPrefs>(
