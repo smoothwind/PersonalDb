@@ -266,12 +266,14 @@ mod mysql_family;
 #[cfg(feature = "oracle")]
 mod oracle;
 mod postgresql;
+mod sqlite;
 
 pub use generic::GenericDialect;
 pub use mysql_family::MySqlFamilyDialect;
 #[cfg(feature = "oracle")]
 pub use oracle::OracleDialect;
 pub use postgresql::PostgresDialect;
+pub use sqlite::SqliteDialect;
 
 /// 方言工厂（注册表：新增数据库在此追加一条）
 pub fn build(kind: DbKind) -> DbResult<Arc<dyn SqlDialect>> {
@@ -279,6 +281,7 @@ pub fn build(kind: DbKind) -> DbResult<Arc<dyn SqlDialect>> {
         DbKind::MySql => Ok(Arc::new(MySqlFamilyDialect::mysql())),
         DbKind::OceanBase => Ok(Arc::new(MySqlFamilyDialect::oceanbase())),
         DbKind::PostgreSql => Ok(Arc::new(PostgresDialect)),
+        DbKind::Sqlite => Ok(Arc::new(SqliteDialect)),
         DbKind::Jdbc => Ok(Arc::new(GenericDialect)),
         // OceanBase Oracle 兼容模式与 Oracle 共享方言
         DbKind::Oracle | DbKind::OceanBaseOracle => {

@@ -68,7 +68,7 @@ import {
   syntaxHighlighting,
   unfoldAll,
 } from '@codemirror/language'
-import { MySQL, PLSQL, PostgreSQL, sql } from '@codemirror/lang-sql'
+import { MySQL, PLSQL, PostgreSQL, StandardSQL, sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { Brush, CopyDocument, Expand, Fold, ScaleToOriginal } from '@element-plus/icons-vue'
 import { usePreferencesStore } from '../stores/preferences'
@@ -119,6 +119,8 @@ function dialectOf(kind: DbKind) {
   switch (kind) {
     case 'postgresql':
       return PostgreSQL
+    case 'sqlite':
+      return StandardSQL
     case 'oracle':
     case 'oceanbase-oracle':
       return PLSQL

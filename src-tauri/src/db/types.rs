@@ -19,6 +19,8 @@ pub enum DbKind {
     OceanBaseOracle,
     /// Oracle 11g+（需编译时启用 oracle 特性）
     Oracle,
+    /// SQLite 3（嵌入式文件数据库，连接 = 数据库文件路径）
+    Sqlite,
     /// 通用 JDBC（任意驱动/驱动类/URL，经驱动管理配置）
     Jdbc,
 }
@@ -31,8 +33,8 @@ impl DbKind {
             // OB MySQL / Oracle 模式默认端口均为 2881（OBProxy）
             DbKind::OceanBase | DbKind::OceanBaseOracle => 2881,
             DbKind::Oracle => 1521,
-            // 通用 JDBC 端口由驱动配置决定
-            DbKind::Jdbc => 0,
+            // 通用 JDBC 端口由驱动配置决定；SQLite 为嵌入式无端口
+            DbKind::Jdbc | DbKind::Sqlite => 0,
         }
     }
 
@@ -43,6 +45,7 @@ impl DbKind {
             DbKind::OceanBase => "OceanBase",
             DbKind::OceanBaseOracle => "OceanBase (Oracle)",
             DbKind::Oracle => "Oracle",
+            DbKind::Sqlite => "SQLite",
             DbKind::Jdbc => "JDBC",
         }
     }
