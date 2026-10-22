@@ -8,8 +8,9 @@
 
 ## 功能特性
 
-- **多数据库**：MySQL / OceanBase（MySQL、Oracle 模式）/ PostgreSQL / Oracle / 任意 JDBC
+- **多数据库**：MySQL / OceanBase（MySQL、Oracle 模式）/ PostgreSQL / Oracle / SQLite / 任意 JDBC
   - Oracle 免装 OCI（内置 Go go-ora）；OceanBase Oracle 走内置 JDBC（OceanBase Connector/J）
+  - SQLite 为嵌入式单文件库：选文件即连，零配置（`.db / .sqlite / .sqlite3 / .db3`）
 - **密码安全**：连接密码存于 **Windows 凭据管理器**（keyring），配置文件仅存引用；启动自动迁移明文
 - **配置互通**：导出/导入自身配置（可选 AES-GCM 口令加密）；**从 DBeaver / Navicat(.ncx) / PL-SQL Developer 导入连接**（密码解密 best-effort）
 - **会话管理**：活动会话查看（自动刷新/筛选/**阻塞链**/**锁·事务视图**/摘要统计），取消查询 / 终止会话（Oracle 双模式、批量终止、Kill 跟踪）、会话详情、**CSV 导出**、>300 行虚拟化、列序持久化（MySQL / PostgreSQL / Oracle / OB）
@@ -35,6 +36,7 @@
 | OceanBase（Oracle 模式） | 内置 JDBC 驱动（OceanBase Connector/J）/ `oracle` crate 0.6（OCI） | 2881       | **实验性**；默认内置驱动免装 OCI（需 JRE 21+），用户名 `用户@租户`，Schema 留空 |
 | PostgreSQL 12+           | `tokio-postgres` + deadpool                                        | 5432       | 开箱即用                                                                                |
 | Oracle 11g+              | 内置 Go 驱动（go-ora）/ `oracle` crate 0.6（ODPI-C）               | 1521       | 默认内置驱动**免安装 OCI**；可选 OCI 方式                                         |
+| SQLite 3                 | `rusqlite`（bundled，Rust 原生）                                   | 无（文件） | 连接 = 本地数据库文件（`.db/.sqlite/.sqlite3/.db3`）；支持事务/执行计划/导出/结果编辑；无服务端会话概念 |
 | JDBC（任意库）           | 通用 JDBC 桥（Java）+ 用户驱动 jar                                   | 由驱动决定 | **驱动管理**（工具 → 驱动管理）：自定义驱动类/URL 模板/本地 jar                  |
 
 ## 开发环境要求
@@ -130,10 +132,11 @@ src/                        # Vue 3 前端
 src-tauri/src/              # Rust 后端
 ├── db/
 │   ├── driver.rs           # DatabaseDriver trait（统一抽象）
-│   ├── dialect/            # SQL 方言层（mysql_family / postgresql / oracle / generic）
+│   ├── dialect/            # SQL 方言层（mysql_family / postgresql / oracle / sqlite / generic）
 │   ├── mysql.rs            # MySQL / OceanBase 实现
 │   ├── postgres.rs         # PostgreSQL 实现
 │   ├── oracle.rs           # Oracle OCI 实现（feature-gated）
+│   ├── sqlite.rs           # SQLite 实现（rusqlite bundled，文件库）
 │   ├── bridge.rs           # 桥接进程管理与 NDJSON 通信（oracle-bridge / jdbc-bridge）
 │   ├── bridge_driver.rs    # 内置桥接驱动（go-ora / OceanBase Connector/J）
 │   ├── jdbc.rs / jdbc_driver.rs  # 通用 JDBC 连接 + 驱动管理
