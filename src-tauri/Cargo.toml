@@ -1,6 +1,6 @@
 [package]
 name = "personal-db"
-version = "0.1.1"
+version = "0.2.0"
 description = "PersonalDb - 基于 Tauri2 的多数据库客户端工具"
 authors = ["smoothwind"]
 edition = "2024"
