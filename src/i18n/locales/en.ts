@@ -79,6 +79,7 @@ export default {
     oceanbase: 'OceanBase',
     'oceanbase-oracle': 'OceanBase (Oracle)',
     oracle: 'Oracle',
+    sqlite: 'SQLite',
     jdbc: 'JDBC',
   },
   menu: {
@@ -116,6 +117,9 @@ export default {
     serviceUnknown: 'Oracle service not registered (check the service name / SID: ORA-12514 / 12505)',
     accountLocked: 'Account locked or password expired (ORA-28000)',
     tls: 'TLS negotiation failed (server / OBProxy TLS configuration incompatible; try connecting directly to port 2881)',
+    sqliteFile: 'Cannot open the database file (missing, in use, or access denied)',
+    sqliteLocked: 'Database is locked by another process (unfinished write; retry later or close the holder)',
+    sqliteNotDb: 'The file is not a valid SQLite database (corrupted or another format)',
   },
   transfer: {
     title: 'Config Import / Export',
@@ -347,6 +351,10 @@ export default {
     nameRequired: 'Name is required',
     hostRequired: 'Host is required',
     usernameRequired: 'Username is required',
+    filePath: 'Database file',
+    filePathPlaceholder: 'Pick a .db / .sqlite / .sqlite3 / .db3 file',
+    browse: 'Browse…',
+    filePathRequired: 'Please choose a SQLite database file',
     portInvalid: 'Port must be an integer between 1 and 65535',
     testBtn: 'Test Connection',
     saveSuccess: 'Connection saved. Expand the connection node to use it.',

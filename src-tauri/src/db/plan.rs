@@ -1,9 +1,10 @@
-//! 执行计划：结构化节点 + MySQL / PostgreSQL JSON 计划解析器。
+//! 执行计划：结构化节点 + MySQL / PostgreSQL JSON 计划解析器 + SQLite 行式计划。
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::{AppError, DbResult};
+use crate::db::types::{CellValue, QueryResult};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -205,4 +206,72 @@ fn parse_pg_node(obj: &Value) -> DbResult<PlanNode> {
         }
     }
     Ok(node)
+}
+
+/// SQLite `EXPLAIN QUERY PLAN` 结果行 → 结构化树。
+///
+/// 列序固定：id, parent, notused, detail（id/parent 为计划节点编号，
+/// parent = 0 为根；detail 为人类可读的访问方式描述，如
+/// "SCAN t"、"SEARCH t USING INDEX idx (a=?)"）。
+pub fn sqlite_plan_from_rows(result: &QueryResult) -> DbResult<PlanNode> {
+    use std::collections::HashMap;
+
+    let cell_text = |c: &CellValue| -> Option<String> {
+        match c {
+            CellValue::Null => None,
+            CellValue::Text(s) | CellValue::Binary(s) => Some(s.clone()),
+            CellValue::Int(i) => Some(i.to_string()),
+            CellValue::UInt(u) => Some(u.to_string()),
+            CellValue::Float(f) => Some(f.to_string()),
+            CellValue::Bool(b) => Some(if *b { "1".into() } else { "0".into() }),
+        }
+    };
+    // 行 → (id, parent, detail)
+    let mut entries: Vec<(i64, i64, String)> = Vec::new();
+    for row in &result.rows {
+        let id = row.first().and_then(|c| match c {
+            CellValue::Int(i) => Some(*i),
+            CellValue::Text(s) => s.trim().parse().ok(),
+            _ => None,
+        });
+        let parent = row.get(1).and_then(|c| match c {
+            CellValue::Int(i) => Some(*i),
+            CellValue::Text(s) => s.trim().parse().ok(),
+            _ => None,
+        });
+        let detail = row.get(3).and_then(|c| cell_text(c)).filter(|s| !s.is_empty());
+        if let (Some(id), Some(parent), Some(detail)) = (id, parent, detail) {
+            entries.push((id, parent, detail));
+        }
+    }
+    if entries.is_empty() {
+        return Err(AppError::General("执行计划查询无输出".into()));
+    }
+
+    let mut nodes: HashMap<i64, PlanNode> = HashMap::new();
+    for (id, _, detail) in &entries {
+        let mut node = PlanNode::leaf(detail.clone());
+        node.attrs.push(("id".into(), id.to_string()));
+        nodes.insert(*id, node);
+    }
+    // parent 挂接（先建好所有节点再归并；逐个 remove 避免双重可变借用）
+    let mut roots: Vec<PlanNode> = Vec::new();
+    let mut orphans: Vec<PlanNode> = Vec::new();
+    for (id, parent, _) in &entries {
+        let Some(node) = nodes.remove(id) else {
+            continue;
+        };
+        if *parent == 0 {
+            roots.push(node);
+        } else if let Some(p) = nodes.get_mut(parent) {
+            p.children.push(node);
+        } else {
+            // parent 未出现在结果中（防御异常输出）：平铺到根
+            orphans.push(node);
+        }
+    }
+    let mut root = PlanNode::leaf("查询计划");
+    root.children = roots;
+    root.children.append(&mut orphans);
+    Ok(root)
 }

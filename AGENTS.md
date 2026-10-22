@@ -63,12 +63,12 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - 交互约定：连接树单击表即查询前 100 行（预览 SQL 由后端方言生成），右键节点管理（新建查询/编辑/断开/删除/导出/查看定义）；查询 Tab 绑定连接+库上下文，支持选中执行；SQL 编辑器支持快捷指令展开（空格/Tab 触发，`${1:占位符}` Tab 跳转）、方言格式化（Ctrl+Shift+F，sql-formatter）、执行计划（capabilities.explain 驱动）；结果区支持表格/记录视图切换，单元格双击打开语义化详情（JSON 树/HEX/图片预览/日期多格式）
 - `src-tauri/src/db/` 数据库层（Transport × Dialect 架构）：
   - `driver.rs` 定义 `DatabaseDriver` trait（连接/执行/元数据 + `dialect()`/`run_catalog()`/`query_text()`）
-  - `dialect/` SQL 方言层：`mod.rs` 定义 `SqlDialect` trait（能力声明、标识符/字面量引用、INSERT 生成、DDL 策略、对象定义查询、预览 SQL、对象目录），`mysql_family.rs`（MySQL+OceanBase 共用）、`postgresql.rs`、`oracle.rs`（feature-gated）；**新增数据库 = 实现方言 + dialect::build 注册 + registry 登记 + create_driver 分支**
+  - `dialect/` SQL 方言层：`mod.rs` 定义 `SqlDialect` trait（能力声明、标识符/字面量引用、INSERT 生成、DDL 策略、对象定义查询、预览 SQL、对象目录），`mysql_family.rs`（MySQL+OceanBase 共用）、`postgresql.rs`、`oracle.rs`（feature-gated）、`sqlite.rs`（sqlite_master + PRAGMA 表值函数）；**新增数据库 = 实现方言 + dialect::build 注册 + registry 登记 + create_driver 分支**
   - `registry.rs` 数据库类型注册表（`KindInfo` 能力下发前端，`db_registry` 命令）
   - `catalog.rs` + `objects.rs` 对象浏览器（按类型分组：表/视图/索引/序列/函数/存储过程/触发器）
   - `export.rs` 导出引擎（SQL=DDL+方言 INSERT / CSV / Excel，文件路径由前端 save 对话框提供）
-  - `plan.rs` 执行计划（PlanNode + MySQL/PG JSON 计划解析器；Oracle capability 关闭）
-  - `mysql.rs`/`postgres.rs`/`oracle.rs` 连接传输实现（连接池 + 结果集拉取 + semantic 推断 + 二进制 base64）
+  - `plan.rs` 执行计划（PlanNode + MySQL/PG JSON 计划解析器 + SQLite `EXPLAIN QUERY PLAN` 行式树构建 `sqlite_plan_from_rows`（`db_explain` 按 kind 特判）；Oracle capability 关闭）
+  - `mysql.rs`/`postgres.rs`/`oracle.rs`/`sqlite.rs` 连接传输实现（连接池 + 结果集拉取 + semantic 推断 + 二进制 base64；SQLite 为 rusqlite bundled 单文件连接 + `spawn_blocking` 包装同步 API + 手动事务专用连接，连接 = `params.file` 文件路径，**不带 CREATE 标志**防静默建空库）
   - `bridge.rs` + `bridge_driver.rs` **内置桥接驱动**（免 OCI，NDJSON over stdio）：真实 Oracle 走 oracle-bridge（Go + go-ora），OceanBase Oracle 走 jdbc-bridge（Java + OceanBase Connector/J——OceanBase 的 Oracle 模式本质是 **MySQL 协议 + OB 扩展能力位** `OB_CLIENT_SUPPORT_ORACLE_MODE`，标准 Oracle TNS 客户端无法连接）；`pool.rs` 默认优先内置桥接，`params.driver == "oci"` 或桥接缺失时回退 `oracle.rs`；**桥接/JDBC 驱动 `execute` 前做会话内 schema 切换**（桥接 fail-hard `ALTER SESSION SET CURRENT_SCHEMA`；JDBC 按 `driver_class` 嗅探 best-effort；`ping` 直连 query 不打断状态；OCI 连接池不支持，沿用 owner 过滤）
   - `pool.rs` 驱动工厂 `create_driver` + 会话管理器
   - `jdbc_driver.rs` + 存储类别 `drivers`（`drivers.json`）：**JDBC 驱动管理**（名称/驱动类/URL 模板/默认端口/本地 jar 列表，内置 OceanBase 预设）；`jdbc.rs` **通用 JDBC 连接类型**（`DbKind::Jdbc`，对象树走 JDBC `DatabaseMetaData`，方言为保守 ANSI 的 `dialect/generic.rs`）；`bridge.rs` 泛化支持 `-cp` 附加用户驱动 jar
@@ -90,7 +90,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - 前后端字段命名：Rust 结构体一律 `#[serde(rename_all = "camelCase")]`，TS 端不使用 snake_case
 - Windows 下 tauri-winres 需要 rc.exe，路径配置在 `src-tauri/.cargo/config.toml`（Windows SDK 版本变化时需更新）
 - 导出方言细节：MySQL 文件头写 `SET NO_BACKSLASH_ESCAPES=1`（literal 不转义反斜杠）；Oracle 日期用 `TO_TIMESTAMP`（含/不含毫秒两种格式）；二进制统一 base64 传输、导出时转 HEX（X''/decode/HEXTORAW）
-- 方言连接注意：PG 未填 database 时**必须默认连 `postgres` 库**（tokio-postgres 默认以用户名作为库名，同名库不存在会连接失败）；PG 的 `list_databases` 返回 **schema 列表**（`database` 参数在 PG 驱动中即 schema 上下文，同连接跨 schema 无需重连，勿改回 pg_database）；OceanBase 需显式 `ssl_opts(None)` 禁用 TLS（mysql_async 默认 PREFERRED，OBProxy/CE 的 TLS 协商常见失败）；OceanBase **Oracle 模式租户**不支持 MySQL 协议（服务端报 1235），须使用独立的 `DbKind::OceanBaseOracle`（复用 oracle 传输 + Oracle 方言，需 `--features oracle`；用户填租户名作 service_name）—— 错误经 `utils/connError.ts#describeConnError` 附加处理建议
+- 方言连接注意：PG 未填 database 时**必须默认连 `postgres` 库**（tokio-postgres 默认以用户名作为库名，同名库不存在会连接失败）；PG 的 `list_databases` 返回 **schema 列表**（`database` 参数在 PG 驱动中即 schema 上下文，同连接跨 schema 无需重连，勿改回 pg_database）；OceanBase 需显式 `ssl_opts(None)` 禁用 TLS（mysql_async 默认 PREFERRED，OBProxy/CE 的 TLS 协商常见失败）；OceanBase **Oracle 模式租户**不支持 MySQL 协议（服务端报 1235），须使用独立的 `DbKind::OceanBaseOracle`（复用 oracle 传输 + Oracle 方言，需 `--features oracle`；用户填租户名作 service_name）—— 错误经 `utils/connError.ts#describeConnError` 附加处理建议；**SQLite** 连接 = `params.file` 文件路径（ConnectionForm 文件选择对话框，`.db/.sqlite/.sqlite3/.db3`），`list_databases` 固定 `["main"]`，`execute` 走 `spawn_blocking`（rusqlite 同步 API），rusqlite 需 `column_decltype` feature（`Statement::columns()` 被其门控），`EXPLAIN QUERY PLAN` 行式输出由 `db_explain` 特判构建计划树，内部对象（`sqlite_%`）在目录/索引/快照中统一 ESCAPE 过滤
 - 不要用 PowerShell 的 Set-Content 重写源码文件（会破坏 UTF-8 中文注释），改文件一律用编辑工具
 - `fallible-iterator` 必须锁 0.2（与 tokio-postgres 一致）；oracle crate 0.6 为重构版 API（`PoolBuilder::max_connections`、`Connection::statement().build()`）
 - 连接密码目前明文存于存储目录（`storage.rs` 解析，默认 `安装目录\data\connections\connections.json`），改动相关逻辑时注意不要把密码写入日志

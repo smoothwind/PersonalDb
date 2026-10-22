@@ -59,6 +59,8 @@ function buildSelectSql(kind: DbKind, database: string, table: string): string {
       return `SELECT * FROM \`${database}\`.\`${table}\` LIMIT 100;`
     case 'postgresql':
       return `SELECT * FROM "${database}"."${table}" LIMIT 100;`
+    case 'sqlite':
+      return `SELECT * FROM "${table}" LIMIT 100;`
     case 'oracle':
     case 'oceanbase-oracle':
       return `SELECT * FROM "${table}" WHERE ROWNUM <= 100`

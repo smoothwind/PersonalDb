@@ -534,6 +534,18 @@
 - **验收**：驱动管理可增删改并扫描驱动类；JDBC 连接表单可选驱动；真机连接 OceanBase（`builtin-oceanbase`）可列出 schema/表。
 - **落点**：`src-tauri/jdbc-bridge/`、`db/jdbc_driver.rs`、`db/jdbc.rs`、`db/dialect/generic.rs`、`db/bridge.rs`、`db/pool.rs`、`storage.rs#StorageCategory::Drivers`、`commands.rs#jdbc_driver_*`、`DriverManager.vue`、`ConnectionForm.vue`、`types/db.ts`。
 
+## SPEC-CONN-4 SQLite 嵌入式连接
+
+- **需求**：支持 SQLite 3 单文件数据库（嵌入式，无服务端、无账号体系）；连接 = 本地数据库文件路径。
+- **选择规则**：`DbKind::Sqlite`；驱动为 **rusqlite（bundled，含 `column_decltype`）**，零外部依赖；`pool.rs#create_driver` 直接分支，无回退。
+- **连接模型**：
+  - 文件路径存 `params.file`（兼容 `database` 字段回退），ConnectionForm 提供文件选择对话框（`.db/.sqlite/.sqlite3/.db3`），未选文件保存时拦截；
+  - 打开标志 **不带 `SQLITE_OPEN_CREATE`**——文件不存在直接报错，杜绝静默建空库；`busy_timeout` 5s；
+  - `list_databases` 固定 `["main"]`（ATTACH 库不管理）；主机/端口/账号/密码 UI 全部隐藏，无凭据存储。
+- **能力**（`dialect/sqlite.rs`）：explain ✓（`EXPLAIN QUERY PLAN` 行式输出，`db_explain` 特判经 `plan::sqlite_plan_from_rows` 构建树）、DDL ✓（`sqlite_master.sql` 原文）、INSERT ✓（二进制 `X'HEX'`）、手动事务 ✓（专用连接 + `tx_open` 跟踪，与 PG 同模式）、会话管理 ✗（嵌入式无服务器会话）；对象类型：表/视图/索引/触发器（无序列/函数/存储过程）。
+- **实现约束**：rusqlite 同步 API 一律 `spawn_blocking` 包装；内部对象（`sqlite_sequence`/`sqlite_autoindex_*`）在目录/快照中统一 `NOT LIKE 'sqlite\_%' ESCAPE '\'` 过滤；改列类型不自动生成 DDL（需整表重建，避免有损变更）；导出文件头 `PRAGMA foreign_keys=OFF`。
+- **落点**：`db/sqlite.rs`（传输）、`db/dialect/sqlite.rs`、`db/plan.rs#sqlite_plan_from_rows`、`db/registry.rs`、`pool.rs`、`commands.rs#db_explain`、`ConnectionForm.vue`（文件选择）、`DbLogo.vue`、`types/db.ts`、`utils/connError.ts`（文件缺失/被锁/非数据库三规则）。
+
 ## SPEC-RESULT-6 结果集导出（选中行 / 过滤结果）
 
 - **需求**：将结果集**选中行**（无选中则为当前过滤后全部行）导出为 **Excel / SQL INSERT / CSV / TXT**；列范围默认「可见列」，可选择具体列；所有可配置项须在**首选项**可改。

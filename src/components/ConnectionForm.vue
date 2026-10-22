@@ -27,19 +27,19 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item :label="t('form.host')" prop="host">
+      <el-form-item v-if="!isSqlite" :label="t('form.host')" prop="host">
         <el-input v-model="form.host" placeholder="127.0.0.1" />
       </el-form-item>
-      <el-form-item :label="t('form.port')" prop="port">
+      <el-form-item v-if="!isSqlite" :label="t('form.port')" prop="port">
         <el-input-number v-model="form.port" :min="1" :max="65535" controls-position="right" style="width: 100%" />
       </el-form-item>
-      <el-form-item :label="t('form.username')" prop="username">
+      <el-form-item v-if="!isSqlite" :label="t('form.username')" prop="username">
         <el-input
           v-model="form.username"
           :placeholder="usernamePlaceholder"
         />
       </el-form-item>
-      <el-form-item :label="t('form.password')" prop="password">
+      <el-form-item v-if="!isSqlite" :label="t('form.password')" prop="password">
         <el-input
           v-model="form.password"
           type="password"
@@ -48,7 +48,17 @@
           :placeholder="passwordPlaceholder"
         />
       </el-form-item>
-      <el-form-item :label="databaseLabel" prop="database">
+      <el-form-item v-if="isSqlite" :label="t('form.filePath')" prop="filePath">
+        <div class="file-row">
+          <el-input
+            :model-value="sqliteFile"
+            :placeholder="t('form.filePathPlaceholder')"
+            @update:model-value="(v: string) => (sqliteFile = v)"
+          />
+          <el-button @click="browseSqliteFile">{{ t('form.browse') }}</el-button>
+        </div>
+      </el-form-item>
+      <el-form-item v-if="!isSqlite" :label="databaseLabel" prop="database">
         <el-input v-model="form.database" :placeholder="databasePlaceholder" />
       </el-form-item>
       <el-form-item v-if="isJdbc" :label="t('form.jdbcDriver')">
@@ -95,6 +105,7 @@ import { useI18n } from 'vue-i18n'
 import { objectIcon } from '../utils/objectIcons'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { open } from '@tauri-apps/plugin-dialog'
 import { dbTestConnection, bridgeStatus, jdbcDriversList } from '../api/db'
 import { describeConnError } from '../utils/connError'
 import { DB_DEFAULT_PORTS, DB_KIND_LABELS } from '../types/db'
@@ -177,8 +188,8 @@ function emptyForm(): ConnectionConfig {
 
 const rules = computed<FormRules>(() => ({
   name: [{ required: true, message: t('form.nameRequired'), trigger: 'blur' }],
-  host: [{ required: true, message: t('form.hostRequired'), trigger: 'blur' }],
-  username: [{ required: true, message: t('form.usernameRequired'), trigger: 'blur' }],
+  host: [{ required: !isSqlite.value, message: t('form.hostRequired'), trigger: 'blur' }],
+  username: [{ required: !isSqlite.value, message: t('form.usernameRequired'), trigger: 'blur' }],
   port: [
     {
       validator: (_r: unknown, v: unknown, cb: (e?: Error) => void) => {
@@ -219,6 +230,34 @@ const passwordPlaceholder = computed(() =>
 const isOracle = computed(
   () => form.value.kind === 'oracle' || form.value.kind === 'oceanbase-oracle',
 )
+
+/** SQLite：连接 = 本地数据库文件（路径存 params.file） */
+const isSqlite = computed(() => form.value.kind === 'sqlite')
+const sqliteFile = computed({
+  get: () => form.value.params?.file ?? '',
+  set: (v: string) => {
+    form.value.params = { ...(form.value.params ?? {}), file: v }
+  },
+})
+
+async function browseSqliteFile(): Promise<void> {
+  try {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3', 'db3'] }],
+    })
+    if (typeof picked === 'string' && picked) {
+      sqliteFile.value = picked
+      // 文件名作为默认连接名（新建时更友好）
+      if (!form.value.name) {
+        form.value.name = picked.split(/[\\/]/).pop()?.replace(/\.(db|sqlite|sqlite3|db3)$/i, '') ?? ''
+      }
+    }
+  } catch {
+    // 用户取消选择
+  }
+}
 
 /** 内置桥接驱动可用状态（Oracle: go-ora / OceanBase Oracle: Connector/J） */
 const bridges = ref({ oracleGo: false, obJdbc: false })
@@ -287,6 +326,10 @@ async function onTest(): Promise<void> {
 async function onSave(): Promise<void> {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if (isSqlite.value && !sqliteFile.value.trim()) {
+    ElMessage.warning(t('form.filePathRequired'))
+    return
+  }
   const params = { ...(form.value.params ?? {}) }
   if (!isOracle.value) {
     delete params.driver
@@ -311,5 +354,11 @@ async function onSave(): Promise<void> {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.4;
+}
+
+.file-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 </style>

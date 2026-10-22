@@ -583,6 +583,13 @@ pub async fn db_explain(
         return Err(AppError::General("当前数据库不支持执行计划".into()));
     }
     let explain_sql = dialect.explain_sql(&sql)?;
+    // SQLite 计划为行式输出（id/parent/detail 多行），不走单格 JSON 文本
+    if session.config.kind == crate::db::types::DbKind::Sqlite {
+        let result = driver
+            .execute(database.as_deref(), &explain_sql, 10_000)
+            .await?;
+        return crate::db::plan::sqlite_plan_from_rows(&result);
+    }
     // 经 execute 携带 schema 上下文（MySQL USE db），EXPLAIN 输出一行一列 JSON 文本
     let result = driver
         .execute(database.as_deref(), &explain_sql, 1)

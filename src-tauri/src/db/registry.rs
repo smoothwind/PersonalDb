@@ -39,6 +39,8 @@ fn transport_of(kind: DbKind) -> (&'static str, bool, Option<&'static str>) {
         DbKind::OceanBaseOracle => ("oracle", true, Some("user@tenant")),
         DbKind::PostgreSql => ("postgres", false, None),
         DbKind::Oracle => ("oracle", false, None),
+        // SQLite：嵌入式文件数据库，文件路径存于 params.file
+        DbKind::Sqlite => ("sqlite", false, None),
         // 通用 JDBC：驱动/URL 由驱动管理配置
         DbKind::Jdbc => ("jdbc", false, None),
     }
@@ -72,6 +74,7 @@ pub fn all_kinds() -> Vec<KindInfo> {
         DbKind::OceanBaseOracle,
         DbKind::PostgreSql,
         DbKind::Oracle,
+        DbKind::Sqlite,
         DbKind::Jdbc,
     ]
     .into_iter()

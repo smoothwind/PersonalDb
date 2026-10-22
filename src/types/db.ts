@@ -1,4 +1,4 @@
-export type DbKind = 'mysql' | 'postgresql' | 'oceanbase' | 'oceanbase-oracle' | 'oracle' | 'jdbc'
+export type DbKind = 'mysql' | 'postgresql' | 'oceanbase' | 'oceanbase-oracle' | 'oracle' | 'sqlite' | 'jdbc'
 
 export const DB_KIND_LABELS: Record<DbKind, string> = {
   mysql: 'MySQL',
@@ -6,6 +6,7 @@ export const DB_KIND_LABELS: Record<DbKind, string> = {
   oceanbase: 'OceanBase',
   'oceanbase-oracle': 'OceanBase (Oracle)',
   oracle: 'Oracle',
+  sqlite: 'SQLite',
   jdbc: 'JDBC',
 }
 
@@ -15,6 +16,7 @@ export const DB_DEFAULT_PORTS: Record<DbKind, number> = {
   oceanbase: 2881,
   'oceanbase-oracle': 2881,
   oracle: 1521,
+  sqlite: 0,
   jdbc: 0,
 }
 

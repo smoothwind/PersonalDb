@@ -36,7 +36,7 @@ import {
 } from '@codemirror/language'
 import { closeBrackets, closeBracketsKeymap, completionKeymap, autocompletion } from '@codemirror/autocomplete'
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
-import { MySQL, PLSQL, PostgreSQL, sql } from '@codemirror/lang-sql'
+import { MySQL, PLSQL, PostgreSQL, StandardSQL, sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useI18n } from 'vue-i18n'
 import { usePreferencesStore } from '../stores/preferences'
@@ -145,6 +145,8 @@ function dialectOf(kind: DbKind) {
   switch (kind) {
     case 'postgresql':
       return PostgreSQL
+    case 'sqlite':
+      return StandardSQL
     case 'oracle':
     case 'oceanbase-oracle':
       return PLSQL

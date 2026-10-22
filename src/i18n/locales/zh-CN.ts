@@ -79,6 +79,7 @@ export default {
     oceanbase: 'OceanBase',
     'oceanbase-oracle': 'OceanBase (Oracle)',
     oracle: 'Oracle',
+    sqlite: 'SQLite',
     jdbc: 'JDBC',
   },
   menu: {
@@ -116,6 +117,9 @@ export default {
     serviceUnknown: 'Oracle 服务未注册（请检查服务名 / SID：ORA-12514 / 12505）',
     accountLocked: '账号被锁定或密码已过期（ORA-28000）',
     tls: 'TLS 协商失败（服务端 / OBProxy 的 TLS 配置不兼容，可尝试直连 2881 端口）',
+    sqliteFile: '无法打开数据库文件（文件不存在、被占用或无访问权限）',
+    sqliteLocked: '数据库被其他进程锁定（有未完成的写入；稍后重试或关闭占用方）',
+    sqliteNotDb: '文件不是有效的 SQLite 数据库（可能已损坏或为其他格式）',
   },
   transfer: {
     title: '配置导入 / 导出',
@@ -347,6 +351,10 @@ export default {
     nameRequired: '请输入连接名称',
     hostRequired: '请输入主机地址',
     usernameRequired: '请输入用户名',
+    filePath: '数据库文件',
+    filePathPlaceholder: '选择 .db / .sqlite / .sqlite3 / .db3 文件',
+    browse: '浏览…',
+    filePathRequired: '请选择 SQLite 数据库文件',
     portInvalid: '端口需为 1–65535 的整数',
     testBtn: '测试连接',
     saveSuccess: '连接配置已保存，展开连接节点即可使用',

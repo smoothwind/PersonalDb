@@ -15,11 +15,13 @@ use super::types::{ConnectionConfig, DbKind, SessionInfo};
 use super::oracle::OracleDriver;
 use super::mysql::MySqlDriver;
 use super::postgres::PostgresDriver;
+use super::sqlite::SqliteDriver;
 
 pub fn create_driver(cfg: &ConnectionConfig) -> DbResult<Arc<dyn DatabaseDriver>> {
     match cfg.kind {
         DbKind::MySql | DbKind::OceanBase => Ok(Arc::new(MySqlDriver::new(cfg)?)),
         DbKind::PostgreSql => Ok(Arc::new(PostgresDriver::new(cfg)?)),
+        DbKind::Sqlite => Ok(Arc::new(SqliteDriver::new(cfg)?)),
         DbKind::Jdbc => Ok(Arc::new(GenericJdbcDriver::new(cfg)?)),
         DbKind::Oracle | DbKind::OceanBaseOracle => {
             // 优先内置桥接（免装 OCI）；params.driver = "oci" 可强制 OCI 直连

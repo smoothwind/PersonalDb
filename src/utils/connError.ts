@@ -47,6 +47,13 @@ const RULES: Rule[] = [
     needles: ['Access denied for user', 'password authentication failed', 'ORA-01017', 'authentication failed'],
   },
   { key: 'connError.unknownDatabase', needles: ['Unknown database', 'does not exist'] },
+  // SQLite：文件库特有错误（无法打开/被锁/文件不是数据库）
+  {
+    key: 'connError.sqliteFile',
+    needles: ['unable to open database file', 'Unable to open database file'],
+  },
+  { key: 'connError.sqliteLocked', needles: ['database is locked', 'database table is locked'] },
+  { key: 'connError.sqliteNotDb', needles: ['file is not a database', 'malformed'] },
 ]
 
 /** 一键友好化：命中已知场景返回可操作的一行摘要，否则返回清理后的原始文本 */
