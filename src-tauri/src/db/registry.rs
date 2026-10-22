@@ -38,6 +38,8 @@ fn transport_of(kind: DbKind) -> (&'static str, bool, Option<&'static str>) {
         // OB Oracle 模式走 OCI 协议（需 OB 客户端库 / Instant Client），标记实验性
         DbKind::OceanBaseOracle => ("oracle", true, Some("user@tenant")),
         DbKind::PostgreSql => ("postgres", false, None),
+        // GaussDB / openGauss 走官方 tokio-gaussdb（原生协议，支持 sha256 认证）
+        DbKind::GaussDb => ("gaussdb", false, None),
         DbKind::Oracle => ("oracle", false, None),
         // SQLite：嵌入式文件数据库，文件路径存于 params.file
         DbKind::Sqlite => ("sqlite", false, None),
@@ -73,6 +75,7 @@ pub fn all_kinds() -> Vec<KindInfo> {
         DbKind::OceanBase,
         DbKind::OceanBaseOracle,
         DbKind::PostgreSql,
+        DbKind::GaussDb,
         DbKind::Oracle,
         DbKind::Sqlite,
         DbKind::Jdbc,

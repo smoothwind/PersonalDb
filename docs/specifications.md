@@ -36,7 +36,7 @@
 ## SPEC-EDITOR-1 SQL 编辑器
 
 - **需求**：
-  1. 按当前数据库类型加载**不同语法高亮**（MySQL / PostgreSQL / PLSQL）；
+  1. 按当前数据库类型加载**不同语法高亮**（MySQL / PostgreSQL（含 GaussDB） / PLSQL）；
   2. 支持常见编辑操作（撤销重做、搜索、括号匹配、自动缩进、行号、自动换行可配置）；
   3. 支持**大小写转换**，且**字符串字面值不得被转换**；
   4. 支持**压缩 SQL**（去注释与多余空白、折叠为单行，字面值保持原样）；
@@ -546,6 +546,20 @@
 - **实现约束**：rusqlite 同步 API 一律 `spawn_blocking` 包装；内部对象（`sqlite_sequence`/`sqlite_autoindex_*`）在目录/快照中统一 `NOT LIKE 'sqlite\_%' ESCAPE '\'` 过滤；改列类型不自动生成 DDL（需整表重建，避免有损变更）；导出文件头 `PRAGMA foreign_keys=OFF`。
 - **落点**：`db/sqlite.rs`（传输）、`db/dialect/sqlite.rs`、`db/plan.rs#sqlite_plan_from_rows`、`db/registry.rs`、`pool.rs`、`commands.rs#db_explain`、`ConnectionForm.vue`（文件选择）、`DbLogo.vue`、`types/db.ts`、`utils/connError.ts`（文件缺失/被锁/非数据库三规则）。
 
+## SPEC-CONN-5 GaussDB / openGauss 连接
+
+- **需求**：支持华为 GaussDB 与 openGauss（PostgreSQL 协议兼容内核），**默认 sha256 认证**须可连接。
+- **选择规则**：`DbKind::GaussDb`（默认端口 5432）；`pool.rs#create_driver` 使用独立 `GaussDriver`（官方 `tokio-gaussdb`，支持 md5 / sha256），不复用 `tokio-postgres`（其不支持 openGauss sha256）；`dialect::build` 返回 `PostgresDialect::gauss()` 变体。
+- **连接模型**：与 PostgreSQL 相同——`database` 字段既是连接库名（缺省 `postgres`），也是后续 `SET search_path` 的 schema 上下文；`list_databases` 返回 schema 列表。
+- **连接池**：`db/gaussdb.rs#GaussPool`——`Semaphore` 限制 8 连接，空闲连接 `Mutex<Vec<Client>>` 复用；`Drop` 归还连接并释放名额，已关闭连接直接丢弃；手动事务使用池化专用连接（`GaussTx`）。
+- **方言差异**（`PostgresDialect { gauss: bool }`）：
+  - 无 `pg_sequences` 视图 → 序列目录/计数改查 `pg_class.relkind = 'S'`；
+  - 无 `pg_partitioned_table` → `table_partitioned_query` 返回 `None`（不显示分区标识）；
+  - `pg_stat_activity` 无 `wait_event` / `pg_blocking_pids` → 会话列表的等待信息取 `enqueue` / `waiting`，阻塞列留空；
+  - 其余（标识符/字面量、INSERT、DDL、对象定义、索引、执行计划 JSON）沿用 PostgreSQL 实现。
+- **配置导入**：DBeaver（provider 含 `gauss`）/ Navicat（`GAUSSDB` / `OPENGAUSS`）映射为 `DbKind::GaussDb`。
+- **落点**：`src-tauri/Cargo.toml`（`tokio-gaussdb`）、`db/types.rs`、`db/registry.rs`、`db/pool.rs`、`db/gaussdb.rs`、`db/postgres.rs`（共享参数解析）、`db/dialect/postgresql.rs`、`db/export.rs`、`error.rs`（gaussdb 错误转换）、`import/{dbeaver,navicat}.rs`、`types/db.ts`、`ConnectionForm.vue`、`DbLogo.vue`、`SqlEditor.vue`、`CodeViewer.vue`、`stores/tabs.ts`、`utils/connError.ts`。
+
 ## SPEC-RESULT-6 结果集导出（选中行 / 过滤结果）
 
 - **需求**：将结果集**选中行**（无选中则为当前过滤后全部行）导出为 **Excel / SQL INSERT / CSV / TXT**；列范围默认「可见列」，可选择具体列；所有可配置项须在**首选项**可改。
@@ -641,8 +655,8 @@
 
 ## SPEC-SESSION-1 数据库会话管理
 
-- **能力**：`capabilities.sessions`（registry 下发；MySQL/OB/PG/Oracle/OB Oracle 支持，通用 JDBC 关闭）。
-- **方言**：`SqlDialect#server_sessions_sql`（固定列序 id,user,host,program,state,secs,extra,sqlText；MySQL processlist / PG pg_stat_activity / Oracle v$session+v$sql）与 `kill_session_sql(id, cancel|kill)`（KILL [QUERY] / pg_cancel|terminate_backend / KILL|DISCONNECT SESSION；**id 严格数字校验防注入**）。
+- **能力**：`capabilities.sessions`（registry 下发；MySQL/OB/PG/GaussDB/Oracle/OB Oracle 支持，通用 JDBC 关闭）。
+- **方言**：`SqlDialect#server_sessions_sql`（固定列序 id,user,host,program,state,secs,extra,sqlText；MySQL processlist / PG pg_stat_activity / GaussDB pg_stat_activity（无 wait_event·pg_blocking_pids） / Oracle v$session+v$sql）与 `kill_session_sql(id, cancel|kill)`（KILL [QUERY] / pg_cancel|terminate_backend / KILL|DISCONNECT SESSION；**id 严格数字校验防注入**）。
 - **UI**：Tab 形式（`type='session'`，禁抽屉）；顶部「会话 / 锁·事务」二视图；自动刷新（关/5/10/30s，**请求未返回或窗口失焦自动跳过/暂停**）、关键字筛选 + **状态 chip（全部/活动/空闲/被阻塞）** + 用户下拉、摘要 chips（总数/活动/阻塞）、**耗时热力着色**（≥60s 橙、≥300s 红）、**SQL 悬浮卡**（hover 弹出 pre + 复制；sqlText 列禁用原生 `show-overflow-tooltip`，避免与悬浮卡双弹窗）、`row-key=id` 差分刷新、行内图标操作（取消/终止）、**阻塞链**（第 9 列 `blocking`：Oracle `blocking_session`、PG `pg_blocking_pids`；被阻塞行红色底、阻塞源头行 ⚡ 标）、**批量终止**、**双击行开详情**（全字段 + 完整 SQL + 复制）、**Oracle 终止模式选择**（IMMEDIATE 确认按钮 / POST_TRANSACTION 取消按钮 / 关闭放弃）、**Kill 后跟踪**（行置灰 + 「已请求终止」标记，会话消失自动清除）、**导出 CSV**（BOM + 引号转义，经 save/save_text_file）、**>300 行自动虚拟化**（复用 ResultVirtualGrid，该模式仅排序/复制，禁用勾选/详情/导出并提示）。
 - **锁/事务视图**：方言 `server_locks_sql`（动态列直渲染；Oracle v$lock+v$session TX/TM、PG pg_locks+pg_stat_activity、MySQL 8 data_locks+threads——目标列用 `OBJECT_SCHEMA.OBJECT_NAME` 拼接，持有线程经 `THREAD_ID` 关联；**OceanBase Oracle 走 `V$OB_LOCKS`（LMODE/REQUEST 为字符串 `'RX'/'NONE'` 不做数值 DECODE，无会话 id → 行级终止禁用）**）；**OceanBase MySQL 模式无 data_locks，方言直接声明不支持**；权限缺失/5.7 等查询失败显示错误于空态；动态列客户端排序；>300 行虚拟化；入口 `db_server_locks`。
 - **列操作**：会话表支持**表头拖拽排序**（sortablejs）+ **表头右键菜单**（移到最前/最后、还原列序）；列序为组件内状态（不持久化）。

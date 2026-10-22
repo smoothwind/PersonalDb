@@ -5,7 +5,21 @@ use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 
 use super::{base64_to_hex, Capabilities, ColumnChange, DdlQuery, DdlStrategy, SqlDialect, TableChange};
 
-pub struct PostgresDialect;
+/// PostgreSQL 方言；`gauss = true` 时为 GaussDB / openGauss 变体。
+///
+/// GaussDB 基于 PostgreSQL 9.2/9.4 内核，复用绝大多数语法与系统目录，
+/// 差异：无 `pg_sequences`（改用 `pg_class`）、无 `pg_partitioned_table`、
+/// `pg_stat_activity` 无 `wait_event` / `pg_blocking_pids`。
+#[derive(Default)]
+pub struct PostgresDialect {
+    gauss: bool,
+}
+
+impl PostgresDialect {
+    pub const fn gauss() -> Self {
+        Self { gauss: true }
+    }
+}
 
 #[cfg(test)]
 mod kill_tests {
@@ -13,7 +27,7 @@ mod kill_tests {
 
     #[test]
     fn kill_sql_injection_guard() {
-        let d = PostgresDialect;
+        let d = PostgresDialect::default();
         assert_eq!(
             d.kill_session_sql("99", "cancel"),
             Some("SELECT pg_cancel_backend(99)".into())
@@ -25,6 +39,25 @@ mod kill_tests {
         assert_eq!(d.kill_session_sql("99;DROP TABLE t", "kill"), None);
         assert_eq!(d.kill_session_sql("-1", "kill"), None);
         assert_eq!(d.kill_session_sql("abc", "kill"), None);
+    }
+}
+
+#[cfg(test)]
+mod gauss_tests {
+    use super::*;
+
+    #[test]
+    fn gauss_avoids_missing_pg10_catalogs() {
+        let d = PostgresDialect::gauss();
+        let seq = d.catalog_query(DbObjectType::Sequence, None).unwrap();
+        assert!(seq.sql.contains("relkind = 'S'"));
+        assert!(!seq.sql.contains("pg_sequences"));
+        let count = d.catalog_count_query(DbObjectType::Sequence, None).unwrap();
+        assert!(count.sql.contains("relkind = 'S'"));
+        assert!(d.table_partitioned_query(Some("public"), "t").is_none());
+        let sessions = d.server_sessions_sql().unwrap();
+        assert!(!sessions.contains("wait_event"));
+        assert!(!sessions.contains("pg_blocking_pids"));
     }
 }
 
@@ -56,6 +89,18 @@ impl SqlDialect for PostgresDialect {
     }
 
     fn server_sessions_sql(&self) -> Option<String> {
+        if self.gauss {
+            // openGauss / GaussDB：无 wait_event / pg_blocking_pids，等待信息取 enqueue
+            return Some(
+                "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
+                 COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
+                 COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint::text,'0') AS secs, \
+                 COALESCE(enqueue, CASE WHEN waiting THEN 'waiting' ELSE '-' END, '-') AS extra, \
+                 left(query, 800) AS sql_text, '' AS blocking \
+                 FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY query_start NULLS LAST"
+                    .into(),
+            );
+        }
         Some(
             "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
              COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
@@ -255,6 +300,11 @@ impl SqlDialect for PostgresDialect {
             DbObjectType::Index => {
                 "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1 ORDER BY 1"
             }
+            DbObjectType::Sequence if self.gauss => {
+                "SELECT c.relname, obj_description(c.oid, 'pg_class') \
+                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE c.relkind = 'S' AND n.nspname = $1 ORDER BY 1"
+            }
             DbObjectType::Sequence => {
                 "SELECT sequencename, NULL::text FROM pg_sequences WHERE schemaname = $1 ORDER BY 1"
             }
@@ -297,6 +347,11 @@ impl SqlDialect for PostgresDialect {
                  WHERE c.relkind IN ('v', 'm') AND n.nspname = $1"
             }
             DbObjectType::Index => "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = $1",
+            DbObjectType::Sequence if self.gauss => {
+                "SELECT COUNT(*) FROM pg_class c \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE c.relkind = 'S' AND n.nspname = $1"
+            }
             DbObjectType::Sequence => "SELECT COUNT(*) FROM pg_sequences WHERE schemaname = $1",
             DbObjectType::Function => {
                 "SELECT COUNT(*) FROM pg_proc p \
@@ -325,6 +380,10 @@ impl SqlDialect for PostgresDialect {
     }
 
     fn table_partitioned_query(&self, schema: Option<&str>, table: &str) -> Option<String> {
+        // openGauss / GaussDB 无 pg_partitioned_table（分区信息在 pg_partition）
+        if self.gauss {
+            return None;
+        }
         let schema_expr = match schema.filter(|s| !s.is_empty()) {
             Some(s) => self.quote_string(s),
             None => "current_schema()".to_string(),

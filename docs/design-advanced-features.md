@@ -27,7 +27,8 @@
 | TiDB（规划） | mysql_async | mysql（微调） |
 | StarRocks/Doris（规划） | mysql_async | mysql/分析型微调 |
 | PostgreSQL | tokio-postgres | postgresql |
-| GaussDB/KingbaseES（规划） | tokio-postgres | postgresql（微调） |
+| GaussDB / openGauss（已支持） | tokio-gaussdb（官方，支持 sha256） | postgresql（微调，见 SPEC-CONN-5） |
+| KingbaseES（规划） | tokio-postgres | postgresql（微调） |
 | Oracle | oracle (ODPI-C) | oracle |
 | SQLite（规划） | rusqlite | sqlite |
 | SQL Server（规划） | tiberius（纯 Rust） | tsql |
@@ -158,7 +159,7 @@ export interface DbKindMeta {
 | 成本 | 数据库 | 说明 |
 | --- | --- | --- |
 | ≈0 天 | TiDB / StarRocks / Doris | mysql 方言 + 默认端口差异，仅注册表加条目 |
-| ≈0 天 | GaussDB / KingbaseES | postgresql 方言微调 |
+| ≈0 天 | KingbaseES | postgresql 方言微调（GaussDB 已支持，见 SPEC-CONN-5） |
 | 1~2 天 | SQLite | rusqlite 传输 + sqlite 方言（无服务端/无库列表概念） |
 | 2~3 天 | SQL Server | tiberius 纯 Rust + tsql 方言（TOP/OFFSET-FETCH/方括号） |
 | 3~5 天 | 达梦 DM | ODBC 通道 + oracle 方言微调；或官方驱动 |

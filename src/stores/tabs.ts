@@ -58,6 +58,7 @@ function buildSelectSql(kind: DbKind, database: string, table: string): string {
     case 'oceanbase':
       return `SELECT * FROM \`${database}\`.\`${table}\` LIMIT 100;`
     case 'postgresql':
+    case 'gaussdb':
       return `SELECT * FROM "${database}"."${table}" LIMIT 100;`
     case 'sqlite':
       return `SELECT * FROM "${table}" LIMIT 100;`

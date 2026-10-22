@@ -280,7 +280,8 @@ pub fn build(kind: DbKind) -> DbResult<Arc<dyn SqlDialect>> {
     match kind {
         DbKind::MySql => Ok(Arc::new(MySqlFamilyDialect::mysql())),
         DbKind::OceanBase => Ok(Arc::new(MySqlFamilyDialect::oceanbase())),
-        DbKind::PostgreSql => Ok(Arc::new(PostgresDialect)),
+        DbKind::PostgreSql => Ok(Arc::new(PostgresDialect::default())),
+        DbKind::GaussDb => Ok(Arc::new(PostgresDialect::gauss())),
         DbKind::Sqlite => Ok(Arc::new(SqliteDialect)),
         DbKind::Jdbc => Ok(Arc::new(GenericDialect)),
         // OceanBase Oracle 兼容模式与 Oracle 共享方言

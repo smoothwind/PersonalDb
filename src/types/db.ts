@@ -1,8 +1,9 @@
-export type DbKind = 'mysql' | 'postgresql' | 'oceanbase' | 'oceanbase-oracle' | 'oracle' | 'sqlite' | 'jdbc'
+export type DbKind = 'mysql' | 'postgresql' | 'gaussdb' | 'oceanbase' | 'oceanbase-oracle' | 'oracle' | 'sqlite' | 'jdbc'
 
 export const DB_KIND_LABELS: Record<DbKind, string> = {
   mysql: 'MySQL',
   postgresql: 'PostgreSQL',
+  gaussdb: 'GaussDB',
   oceanbase: 'OceanBase',
   'oceanbase-oracle': 'OceanBase (Oracle)',
   oracle: 'Oracle',
@@ -13,6 +14,7 @@ export const DB_KIND_LABELS: Record<DbKind, string> = {
 export const DB_DEFAULT_PORTS: Record<DbKind, number> = {
   mysql: 3306,
   postgresql: 5432,
+  gaussdb: 5432,
   oceanbase: 2881,
   'oceanbase-oracle': 2881,
   oracle: 1521,

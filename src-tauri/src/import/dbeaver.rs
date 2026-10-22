@@ -14,7 +14,9 @@ use super::ImportedConn;
 
 fn map_provider(provider: &str, driver: &str) -> Option<DbKind> {
     let p = format!("{provider} {driver}").to_lowercase();
-    if p.contains("postgres") {
+    if p.contains("gauss") {
+        Some(DbKind::GaussDb)
+    } else if p.contains("postgres") {
         Some(DbKind::PostgreSql)
     } else if p.contains("mysql") || p.contains("mariadb") {
         Some(DbKind::MySql)
@@ -90,6 +92,7 @@ mod tests {
     #[test]
     fn provider_mapping() {
         assert_eq!(map_provider("postgresql", "postgres"), Some(DbKind::PostgreSql));
+        assert_eq!(map_provider("opengauss", "postgres"), Some(DbKind::GaussDb));
         assert_eq!(map_provider("mysql", "mysql"), Some(DbKind::MySql));
         assert_eq!(map_provider("oracle", "oracle_thin"), Some(DbKind::Oracle));
         assert_eq!(map_provider("sqlite", "sqlite_jdbc"), None);

@@ -212,7 +212,7 @@ const databaseLabel = computed(() => {
 const databasePlaceholder = computed(() => {
   if (form.value.kind === 'oracle') return 'ORCLPDB1'
   if (form.value.kind === 'oceanbase-oracle') return t('form.obSchemaPlaceholder')
-  if (form.value.kind === 'postgresql') return '默认 postgres'
+  if (form.value.kind === 'postgresql' || form.value.kind === 'gaussdb') return '默认 postgres'
   return ''
 })
 

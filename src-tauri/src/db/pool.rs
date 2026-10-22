@@ -8,6 +8,7 @@ use crate::error::{AppError, DbResult};
 use super::bridge::{self, BridgeKind};
 use super::bridge_driver::BridgeDriver;
 use super::driver::DatabaseDriver;
+use super::gaussdb::GaussDriver;
 use super::jdbc::GenericJdbcDriver;
 use super::types::{ConnectionConfig, DbKind, SessionInfo};
 
@@ -21,6 +22,8 @@ pub fn create_driver(cfg: &ConnectionConfig) -> DbResult<Arc<dyn DatabaseDriver>
     match cfg.kind {
         DbKind::MySql | DbKind::OceanBase => Ok(Arc::new(MySqlDriver::new(cfg)?)),
         DbKind::PostgreSql => Ok(Arc::new(PostgresDriver::new(cfg)?)),
+        // GaussDB / openGauss 默认 sha256 认证，需官方 gaussdb 客户端
+        DbKind::GaussDb => Ok(Arc::new(GaussDriver::new(cfg)?)),
         DbKind::Sqlite => Ok(Arc::new(SqliteDriver::new(cfg)?)),
         DbKind::Jdbc => Ok(Arc::new(GenericJdbcDriver::new(cfg)?)),
         DbKind::Oracle | DbKind::OceanBaseOracle => {

@@ -76,6 +76,7 @@ export default {
   dbKind: {
     mysql: 'MySQL',
     postgresql: 'PostgreSQL',
+    gaussdb: 'GaussDB',
     oceanbase: 'OceanBase',
     'oceanbase-oracle': 'OceanBase (Oracle)',
     oracle: 'Oracle',
@@ -108,6 +109,8 @@ export default {
       'This OceanBase connection targets an Oracle-mode tenant, which the MySQL protocol cannot connect to. Switch the connection type to "OceanBase (Oracle)" (uses the built-in driver, no OCI client required).',
     oracleFeatureHint:
       'Built-in Oracle driver (oracle-bridge) not found. Switch to OCI mode (requires Oracle Instant Client or OB libobclient) or rebuild to generate the built-in driver.',
+    unsupportedAuth:
+      'The server uses an authentication method this driver does not support. PostgreSQL connections only support md5 / scram-sha-256; for GaussDB / openGauss (including sha256), select the "GaussDB" connection type and retry.',
     refused: 'The target host refused the connection (service down, wrong port, or firewall)',
     timeout: 'Connection timed out (host unreachable or packets dropped; check host, port and network)',
     unreachable: 'Host unreachable (check the host address and network route)',
