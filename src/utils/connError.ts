@@ -26,6 +26,10 @@ const RULES: Rule[] = [
     needles: ['Oracle tenant for current client driver is not supported', 'ERROR 0A000 (1235)'],
   },
   { key: 'connError.oracleFeatureHint', needles: ['--features oracle', 'oracle-bridge'] },
+  {
+    key: 'connError.unsupportedAuth',
+    needles: ['unsupported authentication method', 'unsupported authentication'],
+  },
   { key: 'connError.accountLocked', needles: ['ORA-28000'] },
   { key: 'connError.serviceUnknown', needles: ['ORA-12514', 'ORA-12505', 'ORA-12154'] },
   { key: 'connError.tls', needles: ['tls handshake', 'TLS handshake', 'SSL error', 'ssl error'] },

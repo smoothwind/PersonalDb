@@ -578,7 +578,7 @@ fn explicit_date_literal(kind: DbKind, sem: crate::db::types::SemanticType, text
             S::DateTime => format!("TO_TIMESTAMP({quoted}, '{fmt}')"),
             _ => format!("TO_DATE({quoted}, '{fmt}')"),
         }),
-        DbKind::PostgreSql => Some(match sem {
+        DbKind::PostgreSql | DbKind::GaussDb => Some(match sem {
             S::DateTime => format!("TO_TIMESTAMP({quoted}, '{fmt}')"),
             _ => format!("TO_DATE({quoted}, '{fmt}')"),
         }),

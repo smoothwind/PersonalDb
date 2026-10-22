@@ -12,6 +12,8 @@ pub enum DbKind {
     MySql,
     /// PostgreSQL 12+
     PostgreSql,
+    /// GaussDB / openGauss（PostgreSQL 协议兼容，默认端口 5432）
+    GaussDb,
     /// OceanBase（MySQL 兼容模式，默认端口 2881）
     OceanBase,
     /// OceanBase（Oracle 兼容模式，默认端口 2881；走 OCI 协议）
@@ -29,7 +31,7 @@ impl DbKind {
     pub fn default_port(self) -> u16 {
         match self {
             DbKind::MySql => 3306,
-            DbKind::PostgreSql => 5432,
+            DbKind::PostgreSql | DbKind::GaussDb => 5432,
             // OB MySQL / Oracle 模式默认端口均为 2881（OBProxy）
             DbKind::OceanBase | DbKind::OceanBaseOracle => 2881,
             DbKind::Oracle => 1521,
@@ -42,6 +44,7 @@ impl DbKind {
         match self {
             DbKind::MySql => "MySQL",
             DbKind::PostgreSql => "PostgreSQL",
+            DbKind::GaussDb => "GaussDB",
             DbKind::OceanBase => "OceanBase",
             DbKind::OceanBaseOracle => "OceanBase (Oracle)",
             DbKind::Oracle => "Oracle",

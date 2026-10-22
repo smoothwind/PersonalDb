@@ -60,6 +60,12 @@ impl From<tokio_postgres::Error> for AppError {
     }
 }
 
+impl From<tokio_gaussdb::Error> for AppError {
+    fn from(e: tokio_gaussdb::Error) -> Self {
+        AppError::Db(e.to_string())
+    }
+}
+
 impl From<deadpool_postgres::PoolError> for AppError {
     fn from(e: deadpool_postgres::PoolError) -> Self {
         AppError::Db(format!("连接池错误: {e}"))

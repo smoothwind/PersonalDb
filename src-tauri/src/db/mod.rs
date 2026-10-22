@@ -5,6 +5,7 @@ pub mod dialect;
 pub mod dml;
 pub mod driver;
 pub mod export;
+pub mod gaussdb;
 pub mod jdbc;
 pub mod jdbc_driver;
 #[cfg(feature = "oracle")]

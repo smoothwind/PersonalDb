@@ -17,6 +17,7 @@ const BRANDS: Record<DbKind, { bg: string; label: string }> = {
   oceanbase: { bg: '#1B7EDE', label: 'OB' },
   'oceanbase-oracle': { bg: '#0F5FAF', label: 'OBO' },
   postgresql: { bg: '#336791', label: 'Pg' },
+  gaussdb: { bg: '#C7000B', label: 'Gs' },
   oracle: { bg: '#E01B22', label: 'Or' },
   sqlite: { bg: '#0F80CC', label: 'Sq' },
   jdbc: { bg: '#5B6B7A', label: 'JD' },

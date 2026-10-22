@@ -290,7 +290,7 @@ async fn list_databases(&self) -> DbResult<Vec<String>> {
     }
 
     fn dialect(&self) -> Arc<dyn SqlDialect> {
-        Arc::new(PostgresDialect)
+        Arc::new(PostgresDialect::default())
     }
 
     async fn run_catalog(
@@ -423,7 +423,7 @@ async fn list_databases(&self) -> DbResult<Vec<String>> {
 }
 
 /// 从 pg_get_indexdef 输出中提取索引列（首个括号组，顶层逗号分割）
-fn parse_index_columns(def: &str) -> Vec<String> {
+pub(crate) fn parse_index_columns(def: &str) -> Vec<String> {
     let Some(start) = def.find('(') else {
         return vec![];
     };
@@ -541,7 +541,7 @@ async fn execute_on(
 }
 
 /// 解析 pg_get_function_arguments 输出（如 `a integer, b text DEFAULT 'x'`）
-fn parse_pg_args(s: &str) -> Vec<RoutineParam> {
+pub(crate) fn parse_pg_args(s: &str) -> Vec<RoutineParam> {
     split_top_level(s)
         .into_iter()
         .filter(|p| !p.trim().is_empty())

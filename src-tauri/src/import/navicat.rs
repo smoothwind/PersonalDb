@@ -127,6 +127,7 @@ fn attr(el: &quick_xml::events::BytesStart, key: &str) -> Option<String> {
 fn map_type(conn_type: &str) -> Option<crate::db::types::DbKind> {
     match conn_type.to_uppercase().as_str() {
         "MYSQL" | "MARIADB" => Some(crate::db::types::DbKind::MySql),
+        "GAUSSDB" | "OPENGAUSS" => Some(crate::db::types::DbKind::GaussDb),
         "POSTGRESQL" | "PGSQL" => Some(crate::db::types::DbKind::PostgreSql),
         "ORACLE" => Some(crate::db::types::DbKind::Oracle),
         _ => None,
@@ -256,6 +257,7 @@ mod tests {
     fn type_mapping() {
         assert_eq!(map_type("MYSQL"), Some(crate::db::types::DbKind::MySql));
         assert_eq!(map_type("postgresql"), Some(crate::db::types::DbKind::PostgreSql));
+        assert_eq!(map_type("gaussdb"), Some(crate::db::types::DbKind::GaussDb));
         assert_eq!(map_type("ORACLE"), Some(crate::db::types::DbKind::Oracle));
         assert_eq!(map_type("MSSQL"), None);
     }

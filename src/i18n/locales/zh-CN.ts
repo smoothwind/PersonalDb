@@ -76,6 +76,7 @@ export default {
   dbKind: {
     mysql: 'MySQL',
     postgresql: 'PostgreSQL',
+    gaussdb: 'GaussDB',
     oceanbase: 'OceanBase',
     'oceanbase-oracle': 'OceanBase (Oracle)',
     oracle: 'Oracle',
@@ -108,6 +109,8 @@ export default {
       '该连接指向 OceanBase Oracle 模式租户，MySQL 协议无法连接；请将连接类型改为「OceanBase (Oracle)」（默认使用内置驱动，无需安装 OCI 客户端）。',
     oracleFeatureHint:
       '未找到内置 Oracle 驱动（oracle-bridge）。可在连接设置中改用 OCI 方式（需安装 Oracle Instant Client 或 OB 的 libobclient），或重新构建以生成内置驱动。',
+    unsupportedAuth:
+      '服务端使用了当前驱动不支持的认证方式。PostgreSQL 连接仅支持 md5 / scram-sha-256；GaussDB / openGauss（含 sha256 认证）请将连接类型改为「GaussDB」后重试。',
     refused: '目标主机拒绝连接（服务未启动、端口不对或防火墙拦截）',
     timeout: '连接超时（主机不可达或网络丢包，请检查地址、端口与网络连通性）',
     unreachable: '主机不可达（请检查主机地址与网络路由）',

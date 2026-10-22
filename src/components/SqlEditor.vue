@@ -144,6 +144,7 @@ let placeholderIdx = -1
 function dialectOf(kind: DbKind) {
   switch (kind) {
     case 'postgresql':
+    case 'gaussdb':
       return PostgreSQL
     case 'sqlite':
       return StandardSQL

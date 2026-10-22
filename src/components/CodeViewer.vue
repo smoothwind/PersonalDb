@@ -118,6 +118,7 @@ const gutterComp = new Compartment()
 function dialectOf(kind: DbKind) {
   switch (kind) {
     case 'postgresql':
+    case 'gaussdb':
       return PostgreSQL
     case 'sqlite':
       return StandardSQL
