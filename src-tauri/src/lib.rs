@@ -1,5 +1,6 @@
 mod commands;
-mod db;
+// pub：供 tests/ 集成测试直连驱动层（对应用行为无影响）
+pub mod db;
 mod error;
 mod history;
 mod import;
