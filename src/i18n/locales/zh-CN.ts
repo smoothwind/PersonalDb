@@ -111,14 +111,22 @@ export default {
       '未找到内置 Oracle 驱动（oracle-bridge）。可在连接设置中改用 OCI 方式（需安装 Oracle Instant Client 或 OB 的 libobclient），或重新构建以生成内置驱动。',
     unsupportedAuth:
       '服务端使用了当前驱动不支持的认证方式。PostgreSQL 连接仅支持 md5 / scram-sha-256；GaussDB / openGauss（含 sha256 认证）请将连接类型改为「GaussDB」后重试。',
-    refused: '目标主机拒绝连接（服务未启动、端口不对或防火墙拦截）',
-    timeout: '连接超时（主机不可达或网络丢包，请检查地址、端口与网络连通性）',
+    refused:
+      '目标主机拒绝连接（服务未启动、端口不对或防火墙拦截）。openGauss / GaussDB 需确认端口（默认 5432，华为云 GaussDB 常为 8000）且服务已启动',
+    timeout:
+      '连接超时（主机不可达或网络丢包，请检查地址、端口与网络连通性）。openGauss 默认仅监听本机（listen_addresses=localhost），远程访问需 gs_guc 改为 * 并重启、放行安全组/防火墙',
     unreachable: '主机不可达（请检查主机地址与网络路由）',
     dns: '主机名无法解析（请检查主机名拼写与 DNS 配置）',
     auth: "认证失败（用户名或密码错误；OceanBase 需填写「用户{'@'}租户」）",
     unknownDatabase: '库 / 服务不存在（请检查库名；OceanBase Oracle 模式的 Schema 需留空）',
     serviceUnknown: 'Oracle 服务未注册（请检查服务名 / SID：ORA-12514 / 12505）',
     accountLocked: '账号被锁定或密码已过期（ORA-28000）',
+    pgHba:
+      '服务端访问控制未放行本机（pg_hba.conf 无对应网段条目）。请在服务端用 gs_guc 为 pg_hba.conf 增加客户端网段（认证方式 sha256）并 reload',
+    gaussAuth:
+      'GaussDB / openGauss 认证失败（login denied）。请检查用户名与密码；若服务端启用 SHA256+MD5 双重认证（password_encryption_type=1），当前驱动不支持，可将账号口令改为 sha256 加密后重试',
+    protocol: '客户端与服务端协议不兼容（unsupported frontend protocol）。请确认端口指向 openGauss / GaussDB 原生监听，且非标准 PostgreSQL 或代理端口',
+    pgStarting: '数据库正在启动中（尚未接受连接，请稍后重试）',
     tls: 'TLS 协商失败（服务端 / OBProxy 的 TLS 配置不兼容，可尝试直连 2881 端口）',
     sqliteFile: '无法打开数据库文件（文件不存在、被占用或无访问权限）',
     sqliteLocked: '数据库被其他进程锁定（有未完成的写入；稍后重试或关闭占用方）',

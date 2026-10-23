@@ -34,6 +34,15 @@ describe('describeConnError 连接失败友好化', () => {
     expect(describeConnError('database "nope" does not exist')).toBe(t('connError.unknownDatabase'))
   })
 
+  it('PG / GaussDB 协议类错误映射', () => {
+    expect(
+      describeConnError('FATAL: no pg_hba.conf entry for host "10.0.0.8", user "gaussdb", database "postgres"'),
+    ).toBe(t('connError.pgHba'))
+    expect(describeConnError('FATAL: Invalid username/password,login denied')).toBe(t('connError.gaussAuth'))
+    expect(describeConnError('unsupported frontend protocol 1234.5678')).toBe(t('connError.protocol'))
+    expect(describeConnError('FATAL: the database system is starting up')).toBe(t('connError.pgStarting'))
+  })
+
   it('已友好化的文本再次传入不会二次包装', () => {
     expect(describeConnError(new Error(t('connError.refused')))).toBe(t('connError.refused'))
   })

@@ -624,12 +624,152 @@ fn resolve_secret(cfg: &mut ConnectionConfig) {
         }
 }
 
+/// JDBC URL 内嵌凭据打码（best-effort）：`://user:pass@host` 授权段与 `user=/password=` 类查询参数。
+fn redact_url_creds(url: &str) -> String {
+    // 授权段 scheme://xxx@（xxx 不含 '/'）→ scheme://***@
+    let auth_start = url.find("://").map(|i| i + 3);
+    if let Some(start) = auth_start
+        && let Some(at) = url[start..].find('@').map(|i| start + i)
+        && !url[start..at].contains('/')
+    {
+        let mut out = String::with_capacity(url.len());
+        out.push_str(&url[..start]);
+        out.push_str("***");
+        out.push_str(&url[at..]);
+        return out;
+    }
+    // 查询参数：按 ? & ; 分段，命中敏感键时值打码
+    const SENSITIVE_KEYS: &[&str] = &["user=", "username=", "password="];
+    let bytes = url.as_bytes();
+    let mut out = String::with_capacity(url.len());
+    let mut seg_start = 0;
+    for i in 0..=bytes.len() {
+        if i == bytes.len() || bytes[i] == b'?' || bytes[i] == b'&' || bytes[i] == b';' {
+            let seg = &url[seg_start..i];
+            let lower = seg.to_ascii_lowercase();
+            let redact = SENSITIVE_KEYS.iter().any(|k| lower.starts_with(k));
+            if redact {
+                let key = seg.split('=').next().unwrap_or(seg);
+                out.push_str(key);
+                out.push_str("=***");
+            } else {
+                out.push_str(seg);
+            }
+            if i < bytes.len() {
+                out.push(bytes[i] as char);
+            }
+            seg_start = i + 1;
+        }
+    }
+    out
+}
+
+/// 连接失败日志用的脱敏目标串：不含用户名/密码/凭据引用（密码与用户信息绝不落盘）。
+fn conn_log_target(cfg: &ConnectionConfig) -> String {
+    let mut params: Vec<String> = cfg
+        .params
+        .iter()
+        .map(|(k, v)| match k.as_str() {
+            "password" | "passwordRef" | "username" | "user" => format!("{k}=***"),
+            "jdbcUrl" => format!("jdbcUrl={}", redact_url_creds(v)),
+            _ => format!("{k}={v}"),
+        })
+        .collect();
+    params.sort();
+    let mut s = format!(
+        "name={:?} kind={} host={} port={} db={}",
+        cfg.name,
+        cfg.kind.display_name(),
+        cfg.host,
+        cfg.effective_port(),
+        cfg.database.as_deref().unwrap_or(""),
+    );
+    if !params.is_empty() {
+        s.push_str(&format!(" params={{{}}}", params.join(", ")));
+    }
+    s
+}
+
+#[cfg(test)]
+mod conn_log_tests {
+    use super::*;
+    use crate::db::types::DbKind;
+    use std::collections::HashMap;
+
+    fn cfg(kind: DbKind, params: HashMap<String, String>) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "id-1".into(),
+            name: "生产 GaussDB".into(),
+            kind,
+            host: "10.0.0.8".into(),
+            port: Some(5432),
+            username: "gaussuser".into(),
+            password: "p@ss".into(),
+            password_ref: Some("cred-ref-1".into()),
+            database: Some("postgres".into()),
+            params,
+            group_id: None,
+        }
+    }
+
+    #[test]
+    fn redact_authority_segment() {
+        assert_eq!(
+            redact_url_creds("jdbc:postgresql://scott:tiger@10.0.0.8:5432/postgres"),
+            "jdbc:postgresql://***@10.0.0.8:5432/postgres"
+        );
+        // 含路径的 "://"（非授权段）不打码
+        assert_eq!(
+            redact_url_creds("jdbc:mysql://10.0.0.8:2881/db?a=b"),
+            "jdbc:mysql://10.0.0.8:2881/db?a=b"
+        );
+    }
+
+    #[test]
+    fn redact_query_params_case_insensitive() {
+        assert_eq!(
+            redact_url_creds("jdbc:gaussdb://h/db?user=scott&Password=tiger;sslmode=disable"),
+            "jdbc:gaussdb://h/db?user=***&Password=***;sslmode=disable"
+        );
+    }
+
+    #[test]
+    fn target_excludes_user_info_and_masks_sensitive_params() {
+        let mut params = HashMap::new();
+        params.insert("password".to_string(), "leak".to_string());
+        params.insert("passwordRef".to_string(), "ref-9".to_string());
+        params.insert(
+            "jdbcUrl".to_string(),
+            "jdbc:postgresql://u:p@h:5432/db".to_string(),
+        );
+        params.insert("file".to_string(), "D:\\data\\a.db".to_string());
+        let t = conn_log_target(&cfg(DbKind::GaussDb, params));
+        assert!(t.contains("name=\"生产 GaussDB\""));
+        assert!(t.contains("kind=GaussDB host=10.0.0.8 port=5432 db=postgres"));
+        assert!(t.contains("password=***"));
+        assert!(t.contains("passwordRef=***"));
+        assert!(t.contains("jdbcUrl=jdbc:postgresql://***@h:5432/db"));
+        assert!(t.contains("file=D:\\data\\a.db"));
+        assert!(!t.contains("gaussuser"));
+        assert!(!t.contains("p@ss"));
+        assert!(!t.contains("leak"));
+        assert!(!t.contains("ref-9"));
+    }
+}
+
 /// 测试连接（不创建会话，用后即弃）
 #[tauri::command]
 pub async fn db_test_connection(mut config: ConnectionConfig) -> DbResult<ServerInfo> {
     resolve_secret(&mut config);
-    let driver = create_driver(&config)?;
-    driver.server_info().await
+    let target = conn_log_target(&config);
+    let driver = create_driver(&config).map_err(|e| {
+        log::warn!(target: "app_error", "测试连接失败 [{target}]");
+        e
+    })?;
+    driver.server_info().await.map_err(|e| {
+        log::warn!(target: "app_error", "测试连接失败 [{target}]");
+        e
+    })
 }
 
 /// 建立连接会话
@@ -639,20 +779,26 @@ pub async fn db_connect(
     mut config: ConnectionConfig,
 ) -> DbResult<SessionInfo> {
     resolve_secret(&mut config);
-    let driver = create_driver(&config)?;
-    let server_info = driver.server_info().await?;
+    let target = conn_log_target(&config);
+    let driver = create_driver(&config).map_err(|e| {
+        log::warn!(target: "app_error", "打开连接失败 [{target}]");
+        e
+    })?;
+    let server_info = driver.server_info().await.map_err(|e| {
+        log::warn!(target: "app_error", "打开连接失败 [{target}]");
+        e
+    })?;
     let info = SessionInfo {
         session_id: crate::db::types::new_session_id(),
         config: config.clone(),
         server_info: server_info.clone(),
     };
     state.add_session(&info, driver);
-    // 连接日志不记录密码
+    // 连接日志不记录密码与用户信息
     log::info!(
-        "session {} connected: {} {}@{}:{} db={:?} (version: {})",
+        "session {} connected: {} {}:{} db={:?} (version: {})",
         info.session_id,
         config.kind.display_name(),
-        config.username,
         config.host,
         config.effective_port(),
         config.database,

@@ -111,14 +111,22 @@ export default {
       'Built-in Oracle driver (oracle-bridge) not found. Switch to OCI mode (requires Oracle Instant Client or OB libobclient) or rebuild to generate the built-in driver.',
     unsupportedAuth:
       'The server uses an authentication method this driver does not support. PostgreSQL connections only support md5 / scram-sha-256; for GaussDB / openGauss (including sha256), select the "GaussDB" connection type and retry.',
-    refused: 'The target host refused the connection (service down, wrong port, or firewall)',
-    timeout: 'Connection timed out (host unreachable or packets dropped; check host, port and network)',
+    refused:
+      'The target host refused the connection (service down, wrong port, or firewall). For openGauss / GaussDB, verify the port (default 5432; Huawei Cloud GaussDB usually 8000) and that the service is running',
+    timeout:
+      'Connection timed out (host unreachable or packets dropped; check host, port and network). openGauss listens on localhost only by default — use gs_guc to set listen_addresses=* and restart, and open the security group/firewall',
     unreachable: 'Host unreachable (check the host address and network route)',
     dns: 'Host name could not be resolved (check the host name and DNS settings)',
     auth: "Authentication failed (wrong user name or password; OceanBase requires user{'@'}tenant)",
     unknownDatabase: 'Database/service not found (check the database name; leave schema empty for OceanBase Oracle mode)',
     serviceUnknown: 'Oracle service not registered (check the service name / SID: ORA-12514 / 12505)',
     accountLocked: 'Account locked or password expired (ORA-28000)',
+    pgHba:
+      'The server ACL does not allow this client (no matching entry in pg_hba.conf). Add the client subnet to pg_hba.conf via gs_guc on the server (auth method sha256) and reload',
+    gaussAuth:
+      'GaussDB / openGauss authentication failed (login denied). Check the user name and password; if the server enables SHA256+MD5 dual authentication (password_encryption_type=1), the current driver does not support it — re-encrypt the password with sha256 and retry',
+    protocol: 'Client/server protocol mismatch (unsupported frontend protocol). Make sure the port points to the native openGauss / GaussDB listener, not a standard PostgreSQL or proxy port',
+    pgStarting: 'The database is starting up (not accepting connections yet; retry shortly)',
     tls: 'TLS negotiation failed (server / OBProxy TLS configuration incompatible; try connecting directly to port 2881)',
     sqliteFile: 'Cannot open the database file (missing, in use, or access denied)',
     sqliteLocked: 'Database is locked by another process (unfinished write; retry later or close the holder)',

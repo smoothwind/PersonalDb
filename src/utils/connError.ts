@@ -32,6 +32,19 @@ const RULES: Rule[] = [
   },
   { key: 'connError.accountLocked', needles: ['ORA-28000'] },
   { key: 'connError.serviceUnknown', needles: ['ORA-12514', 'ORA-12505', 'ORA-12154'] },
+  {
+    key: 'connError.pgHba',
+    needles: ['no pg_hba.conf entry'],
+  },
+  {
+    key: 'connError.gaussAuth',
+    needles: ['Invalid username/password,login denied', 'login denied'],
+  },
+  {
+    key: 'connError.protocol',
+    needles: ['unsupported frontend protocol', 'expected authentication request'],
+  },
+  { key: 'connError.pgStarting', needles: ['the database system is starting up'] },
   { key: 'connError.tls', needles: ['tls handshake', 'TLS handshake', 'SSL error', 'ssl error'] },
   {
     key: 'connError.dns',

@@ -500,16 +500,17 @@
 - **验收**：
   - 双层输出：`describeConnError(err)`（toast / 抛出给调用方的一行摘要）与 `connErrorDetail(err)`（原始文本，写入日志详情）；
   - **命中即摘要**（顺序敏感，先具体后泛化，规则表见 `utils/connError.ts#RULES`）：
-    - Windows 套接字码：`10061` 拒绝 / `10060` 超时 / `10065`·`10051` 主机不可达 / `11001` DNS 解析失败；
+    - Windows 套接字码：`10061` 拒绝 / `10060` 超时 / `10065`·`10051` 主机不可达 / `11001` DNS 解析失败（拒绝/超时文案附带 openGauss 服务端监听/端口排查提示）；
     - Oracle ORA 码：`ORA-12541` 无监听（拒绝）/ `12514`·`12505`·`12154` 服务未注册 / `12170` 超时 / `01017` 认证失败 / `28000` 账号锁定；
     - 驱动/服务端文案：`Access denied for user`·`password authentication failed`·`authentication failed` / `Unknown database`·`does not exist` / TLS 握手失败；
+    - PG / GaussDB 协议类：`no pg_hba.conf entry`（服务端 ACL 未放行）/ `Invalid username/password,login denied`（GaussDB 认证失败，含 SHA256+MD5 双重认证不支持说明）/ `unsupported frontend protocol` / `the database system is starting up`；
     - OceanBase Oracle 租户（服务端 `1235` / `Oracle tenant ... not supported`）→ 引导改用「OceanBase (Oracle)」类型；内置驱动缺失（`oracle-bridge`）→ 引导改用 OCI 或重新构建；
   - **未命中即清理**：折叠空白为单行、剥离多层包装前缀（`数据库错误:` / `Input/output error:` / `Error:`）、超长截断 200 字符；
   - **幂等**：已友好化的文本再次传入（调用方二次包装）不再叠加；
   - **入口全覆盖**：连接树「连接 / 测试连接」、连接表单「测试连接」、命令面板连接项、快速新建查询、会话恢复（`stores/connections.ts#openConnection`）一律走 `describeConnError`，其余入口不得直接 `String(e)`；
   - **文案不重复前缀**：toast 模板 `common.connectionFailed` 已含「连接失败：」，摘要文本自身不得再以「连接失败 / 连接被拒绝：」开头；
-  - 日志：连接失败 detail = `友好摘要 + 换行 + 原始文本`（便于日志面板直读与复制排查）。
-- **落点**：`utils/connError.ts`、`stores/connections.ts#openConnection`、`components/ConnectionForm.vue`、`components/ConnectionTree.vue`、`App.vue`（快速新建查询 / 命令面板）、`tests/conn-error.spec.ts`。
+  - 日志：连接失败 detail = `友好摘要 + 换行 + 原始文本`（便于日志面板直读与复制排查）；后端 `db_test_connection` / `db_connect` 失败时另打印一行**脱敏连接目标**（`commands.rs#conn_log_target`：name/kind/host/port/db + params，**不含用户名/密码/凭据引用**，JDBC URL 内嵌 `user:pass@` 授权段与 `user=/password=` 查询参数打码；连接成功日志同样不含用户名）。
+- **落点**：`utils/connError.ts`、`stores/connections.ts#openConnection`、`components/ConnectionForm.vue`、`components/ConnectionTree.vue`、`App.vue`（快速新建查询 / 命令面板）、`tests/conn-error.spec.ts`、`src-tauri/commands.rs#conn_log_target`（单元测试 `conn_log_tests`）。
 
 ## SPEC-CONN-2 Oracle 连接方式（内置驱动 / OCI）
 
@@ -530,8 +531,9 @@
 - **驱动模型**（`db/jdbc_driver.rs`，持久化 `drivers.json`）：`{ id, name, driverClass, urlTemplate, defaultPort, jars[], builtin }`；内置 OceanBase 预设（`builtin=true` 只读、可复制）。驱动来源**仅本地 jar/目录**。
 - **驱动管理**（工具 → 驱动管理，`DriverManager.vue`）：列表 + 新建/复制/编辑/删除；表单含驱动类、URL 模板、默认端口、本地 jar/目录列表；**查找类**（`jdbc_driver_scan_classes` 经 ServiceLoader 扫描）。
 - **连接类型**：`DbKind::Jdbc`；`db/jdbc.rs#GenericJdbcDriver` 经 jdbc-bridge（`java -cp "<jdbc-bridge.jar>;<jars>" personaldb.JdbcBridge`）连接；URL 取参数 `jdbcUrl` 或由驱动 `urlTemplate` 结合 host/port/database 生成；对象树走 JDBC `DatabaseMetaData`（`metaTables/metaColumns/metaIndexes/...`），方言为 `dialect/generic.rs`（保守 ANSI，`catalog_query` 的 `sql` 仅作类型标记）。
+- **连接表单驱动下拉**：驱动列表在**对话框每次打开时实时重拉**（`ConnectionForm.vue#onOpen → loadJdbcDrivers`）——组件常驻挂载，仅 setup 拉取会遗漏驱动管理中新增的驱动；选中驱动即回填其 `defaultPort`。
 - **会话内 schema 切换**：`execute` 前 best-effort 切换——按 `driver_class` 小写嗅探方言（oracle → `ALTER SESSION SET CURRENT_SCHEMA`；mysql/mariadb/oceanbase → `USE`；postgresql/pgjdbc → `SET search_path`；未知驱动跳过），失败仅 WARN 不中断用户查询；无论成败记录尝试值（避免逐查询重试），`None` 复位为连接默认；`ping` 直连 `query` 绕过切换。
-- **验收**：驱动管理可增删改并扫描驱动类；JDBC 连接表单可选驱动；真机连接 OceanBase（`builtin-oceanbase`）可列出 schema/表。
+- **验收**：驱动管理可增删改并扫描驱动类；JDBC 连接表单可选驱动（**驱动管理新增后重新打开连接表单即可见**）；真机连接 OceanBase（`builtin-oceanbase`）可列出 schema/表。
 - **落点**：`src-tauri/jdbc-bridge/`、`db/jdbc_driver.rs`、`db/jdbc.rs`、`db/dialect/generic.rs`、`db/bridge.rs`、`db/pool.rs`、`storage.rs#StorageCategory::Drivers`、`commands.rs#jdbc_driver_*`、`DriverManager.vue`、`ConnectionForm.vue`、`types/db.ts`。
 
 ## SPEC-CONN-4 SQLite 嵌入式连接

@@ -276,13 +276,14 @@ const bridgeAvailable = computed(() =>
 /** 通用 JDBC：驱动选择 */
 const isJdbc = computed(() => form.value.kind === 'jdbc')
 const jdbcDrivers = ref<JdbcDriver[]>([])
-void jdbcDriversList()
-  .then((list) => {
-    jdbcDrivers.value = list
-  })
-  .catch(() => {
+async function loadJdbcDrivers(): Promise<void> {
+  try {
+    jdbcDrivers.value = await jdbcDriversList()
+  } catch {
     jdbcDrivers.value = []
-  })
+  }
+}
+void loadJdbcDrivers()
 const jdbcDriverId = computed({
   get: () => form.value.params?.jdbcDriverId ?? '',
   set: (v: string) => {
@@ -302,6 +303,8 @@ const driverMode = computed({
 
 function onOpen(): void {
   form.value = props.initial ? { ...props.initial } : emptyForm()
+  // 驱动列表实时刷新：打开表单时重拉（驱动管理中新增/删除后此处才能看到最新选项）
+  void loadJdbcDrivers()
 }
 
 function onKindChange(kind: DbKind): void {
