@@ -6,6 +6,7 @@ mod history;
 mod import;
 mod secrets;
 mod storage;
+mod tray;
 mod vault;
 
 use db::pool::ConnectionManager;
@@ -66,6 +67,8 @@ pub fn run() {
             secrets::migrate_connection_file();
             // 连接保活：周期 ping 防服务端超时静默断连
             db::pool::ConnectionManager::spawn_keepalive(app.handle().clone());
+            // 系统托盘（左键切换主窗显隐；菜单文案由前端按语言刷新）
+            tray::init(app)?;
             // Splash 兜底：8s 内前端未就绪则强制显示主窗
             let h = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -139,6 +142,7 @@ pub fn run() {
             commands::secret_delete,
             commands::secret_copy,
             commands::app_ready,
+            commands::tray_retitle,
             commands::vault_encrypt,
             commands::vault_decrypt,
             commands::import_connections_scan,

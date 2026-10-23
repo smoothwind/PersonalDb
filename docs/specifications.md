@@ -494,6 +494,17 @@
   - 深色主题逐面板核查对比度（连接树/查询结果/设置/日志面板），除 Element Plus 主色按钮自身的固有比值外不得出现 <3:1 的正文/图标对比。
 - **落点**：`components/workbench/{PanelRail,TabBarActions}.vue`、`App.vue`（hdr-btn/tx-act/状态栏）、`components/QueryTabPane.vue`（查询工具栏）。
 
+## SPEC-UI-34 系统托盘
+
+- **需求**：常驻系统托盘，支持一键唤出主窗与退出；可选「关闭窗口时最小化到托盘」（后台保活连接与查询历史）。
+- **机制**（后端 `src-tauri/src/tray.rs`，`tauri` feature `tray-icon`）：
+  - 托盘图标取 `default_window_icon`，tooltip 固定「PersonalDb」；启动时创建（默认中文文案，前端就绪后按当前语言刷新）；
+  - **左键单击**：主窗可见 → 隐藏（收进托盘）；不可见 → 显示 + 取消最小化 + 聚焦；
+  - **右键菜单**：`显示主窗` / `退出`；菜单文案经 `commands.rs#tray_retitle`（`tray::retitle` 重建菜单）随界面语言热切换——App.vue 启动时与 `prefs.locale` 变化时调用；托盘「退出」走 `AppHandle::exit(0)` **不经窗口关闭拦截，真退出**；
+  - **关闭到托盘**（偏好 `ui.closeToTray`，默认**关**；首选项 → 外观）：前端 `App.vue#onCloseRequested` 拦截关闭请求改为 `hide()`（标题栏 ✕ 与代码内 `appWindow.close()` 同路径生效）；capabilities 增 `core:window:allow-hide`；
+- **验收**：托盘左键可收起/唤出主窗；右键菜单两项文案随语言切换；开关开启后点标题栏 ✕ 主窗隐藏、任务栏消失、托盘可唤回；关闭开关后 ✕ 直接退出。
+- **落点**：`src-tauri/tray.rs`、`src-tauri/lib.rs#setup`、`commands.rs#tray_retitle`、`Cargo.toml#tauri features`、`capabilities/default.json`、`App.vue`（onCloseRequested / syncTrayLocale）、`stores/preferences.ts#UiPrefs.closeToTray`、`SettingsDialog.vue`（外观）、`i18n`（`tray.*` / `settings.closeToTray`）、`tests/about.spec.ts`（window mock 增 `onCloseRequested/hide`）。
+
 ## SPEC-CONN-1 连接错误友好提示
 
 - **需求**：连接失败必须给出**可操作的一行摘要**（原始报错链 `数据库错误: Input/output error: ... (os error 10061)` 对用户无意义），同时保留原始文本供排查。

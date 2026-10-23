@@ -132,6 +132,10 @@ export default {
     sqliteLocked: '数据库被其他进程锁定（有未完成的写入；稍后重试或关闭占用方）',
     sqliteNotDb: '文件不是有效的 SQLite 数据库（可能已损坏或为其他格式）',
   },
+  tray: {
+    show: '显示主窗',
+    quit: '退出',
+  },
   transfer: {
     title: '配置导入 / 导出',
     tabExport: '配置导出',
@@ -826,6 +830,7 @@ query: {
     uiFontSize: '字号（px）',
     uiLineHeight: '行高（倍数）',
     maxTabs: '页签数量上限',
+    closeToTray: '关闭窗口时最小化到托盘',
     leftPanelMode: '左侧面板',
     leftModeTabs: '连接/页签切换',
     leftModeStack: '上下分栏',

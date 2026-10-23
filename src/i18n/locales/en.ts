@@ -132,6 +132,10 @@ export default {
     sqliteLocked: 'Database is locked by another process (unfinished write; retry later or close the holder)',
     sqliteNotDb: 'The file is not a valid SQLite database (corrupted or another format)',
   },
+  tray: {
+    show: 'Show Main Window',
+    quit: 'Quit',
+  },
   transfer: {
     title: 'Config Import / Export',
     tabExport: 'Export',
@@ -827,6 +831,7 @@ query: {
     uiFontSize: 'Font size (px)',
     uiLineHeight: 'Line height (x)',
     maxTabs: 'Max tabs',
+    closeToTray: 'Minimize to tray on close',
     leftPanelMode: 'Left panel',
     leftModeTabs: 'Connection / Tabs switch',
     leftModeStack: 'Stacked split',

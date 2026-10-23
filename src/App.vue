@@ -1114,6 +1114,25 @@ function toggleMaxWin(): void {
 function closeWin(): void {
   void appWindow.close()
 }
+
+/** —— 系统托盘（SPEC-UI-34）—— */
+
+/** 关闭到托盘：拦截关闭请求改为隐藏窗口（托盘左键或菜单可再次唤出；退出走托盘菜单） */
+void appWindow.onCloseRequested((event) => {
+  if (prefs.ui.closeToTray) {
+    event.preventDefault()
+    void appWindow.hide()
+  }
+})
+
+/** 托盘菜单文案随界面语言同步（启动 + 切换语言时） */
+function syncTrayLocale(): void {
+  invoke('tray_retitle', { show: t('tray.show'), quit: t('tray.quit') }).catch(() => {
+    // 托盘初始化失败（极端环境）时静默忽略，不影响主流程
+  })
+}
+syncTrayLocale()
+watch(() => prefs.locale, syncTrayLocale)
 </script>
 
 <style>

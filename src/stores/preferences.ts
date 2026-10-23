@@ -77,6 +77,8 @@ export interface UiPrefs {
   maxTabs: number
   /** 左侧模式下：连接树与页签 互斥 Tab / 上下分栏 */
   leftPanelMode: 'tabs' | 'stack'
+  /** 关闭窗口时最小化到托盘（而非退出；SPEC-UI-34） */
+  closeToTray: boolean
 }
 
 /** 更新提示偏好（无自动检测，仅手动「检查更新」；见 docs/specifications.md SPEC-DEV-2） */
@@ -93,6 +95,7 @@ export function defaultUiPrefs(): UiPrefs {
     lineHeight: 1.5,
     maxTabs: 50,
     leftPanelMode: 'tabs',
+    closeToTray: false,
   }
 }
 

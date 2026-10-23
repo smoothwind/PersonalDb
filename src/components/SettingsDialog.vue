@@ -81,6 +81,12 @@
                 @update:model-value="(v: number | undefined) => prefs.updateUi({ maxTabs: Math.min(200, Math.max(1, v ?? 50)) })"
               />
             </el-form-item>
+            <el-form-item :label="t('settings.closeToTray')">
+              <el-switch
+                :model-value="prefs.ui.closeToTray"
+                @update:model-value="(v: string | number | boolean) => prefs.updateUi({ closeToTray: Boolean(v) })"
+              />
+            </el-form-item>
           </el-form>
         </template>
 

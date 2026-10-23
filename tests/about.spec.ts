@@ -28,7 +28,13 @@ vi.mock('@tauri-apps/api/core', () => ({
   }),
 }))
 vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ minimize: vi.fn(), close: vi.fn(), setFocus: vi.fn() }),
+  getCurrentWindow: () => ({
+    minimize: vi.fn(),
+    close: vi.fn(),
+    hide: vi.fn(),
+    setFocus: vi.fn(),
+    onCloseRequested: vi.fn(async () => undefined),
+  }),
 }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(async () => null),

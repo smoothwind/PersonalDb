@@ -942,6 +942,13 @@ pub fn app_ready(app: tauri::AppHandle) {
     }
 }
 
+/// 托盘菜单文案更新（前端语言切换时同步；SPEC-UI-34）
+#[tauri::command]
+pub fn tray_retitle(app: tauri::AppHandle, show: String, quit: String) -> DbResult<()> {
+    crate::tray::retitle(&app, &show, &quit)
+        .map_err(|e| AppError::General(format!("托盘菜单更新失败: {e}")))
+}
+
 // ================= 配置导入 / 导出（vault + 三方解析） =================
 
 /// 配置加密（AES-256-GCM + PBKDF2，口令派生）
