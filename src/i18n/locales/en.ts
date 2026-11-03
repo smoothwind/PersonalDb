@@ -986,8 +986,11 @@ query: {
     sqlTemplatesResetOne: 'Restore built-in',
     sqlTemplatesResetConfirm: 'This clears all custom overrides and restores built-in templates. Continue?',
     sqlTemplatesOverridden: 'Overridden',
-    sqlTemplatesPlaceholders: 'Placeholders:',
+    sqlTemplatesGroupOverridden: '{n} overridden',
     sqlTemplatesEmpty: 'No matching templates',
+    sqlTemplatesEmptyFiltered: 'No matches under current filters — adjust or clear them',
+    sqlTemplatesFilterActive: 'Filtered: {criteria} · {count} matched',
+    sqlTemplatesClearFilters: 'Clear filters',
   },
   tplGroup: {
     paging: 'Paging',

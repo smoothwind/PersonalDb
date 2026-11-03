@@ -538,103 +538,108 @@
             class="storage-hint"
           />
           <div class="tpl-tools">
-            <el-input
-              v-model="tplSearch"
-              size="small"
-              clearable
-              :placeholder="t('settings.sqlTemplatesSearch')"
-              class="tpl-search"
-            />
-            <el-select
-              v-model="tplKinds"
-              multiple
-              collapse-tags
-              collapse-tags-tooltip
-              size="small"
-              :placeholder="t('settings.sqlTemplatesKinds')"
-              class="tpl-kinds"
-            >
-              <el-option
-                v-for="k in tplKindOptions"
-                :key="k.value"
-                :label="k.label"
-                :value="k.value"
+            <div class="tpl-tools-row">
+              <el-input
+                v-model="tplSearch"
+                size="small"
+                clearable
+                :placeholder="t('settings.sqlTemplatesSearch')"
+                class="tpl-search"
               />
-            </el-select>
-            <el-segmented
-              v-model="tplCoverage"
-              size="small"
-              :options="tplCoverageOptions"
-            />
-            <el-button
-              size="small"
-              text
-              :icon="Fold"
-              :title="t('settings.sqlTemplatesCollapseAll')"
-              @click="tplCollapseAll"
-            />
-            <el-button
-              size="small"
-              text
-              :icon="Expand"
-              :title="t('settings.sqlTemplatesExpandAll')"
-              @click="tplExpandAll"
-            />
-            <div class="tpl-tools-spacer" />
-            <el-tag v-if="tplDirty" size="small" type="warning">
-              {{ t('settings.sqlTemplatesUnsaved') }}
-            </el-tag>
-            <el-button size="small" :icon="RefreshLeft" @click="resetAllTemplates">
-              {{ t('settings.sqlTemplatesResetAll') }}
-            </el-button>
-            <el-button
-              size="small"
-              type="primary"
-              :loading="tplSaving"
-              :disabled="!tplDirty"
-              @click="saveTemplates"
-            >
-              {{ t('settings.sqlTemplatesSave') }}
+              <el-segmented
+                v-model="tplCoverage"
+                size="small"
+                :options="tplCoverageOptions"
+              />
+            </div>
+            <div class="tpl-tools-row tpl-tools-row--chips">
+              <div class="tpl-chips" role="group" :aria-label="t('settings.sqlTemplatesKinds')">
+                <button
+                  v-for="k in tplKindOptions"
+                  :key="k.value"
+                  type="button"
+                  class="tpl-chip"
+                  :class="{ 'is-on': tplKindOn(k.value) }"
+                  :aria-pressed="tplKindOn(k.value)"
+                  @click="toggleKind(k.value)"
+                >
+                  {{ k.label }}
+                </button>
+              </div>
+              <div class="tpl-tools-spacer" />
+              <el-tag v-if="tplDirty" size="small" type="warning">
+                {{ t('settings.sqlTemplatesUnsaved') }}
+              </el-tag>
+              <el-button size="small" text @click="tplExpandAll">
+                {{ t('settings.sqlTemplatesExpandAll') }}
+              </el-button>
+              <el-button size="small" text @click="tplCollapseAll">
+                {{ t('settings.sqlTemplatesCollapseAll') }}
+              </el-button>
+              <el-button size="small" :icon="RefreshLeft" @click="resetAllTemplates">
+                {{ t('settings.sqlTemplatesResetAll') }}
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="tplSaving"
+                :disabled="!tplDirty"
+                @click="saveTemplates"
+              >
+                {{ t('settings.sqlTemplatesSave') }}
+              </el-button>
+            </div>
+          </div>
+          <div v-if="tplHasFilter" class="tpl-filterbar">
+            <span class="tpl-filterbar-text">
+              {{ t('settings.sqlTemplatesFilterActive', { criteria: tplCriteria, count: tplTotal }) }}
+            </span>
+            <el-button size="small" text @click="clearFilters">
+              {{ t('settings.sqlTemplatesClearFilters') }}
             </el-button>
           </div>
           <div class="tpl-list">
             <el-collapse v-model="tplOpenGroups" class="tpl-collapse">
               <el-collapse-item v-for="g in tplGroups" :key="g.key" :name="g.key">
                 <template #title>
-                  <span class="tpl-group-name">{{ t(g.labelKey) }}</span>
-                  <span class="tpl-group-count">
-                    {{ t('settings.sqlTemplatesCount', { total: g.entries.length, overridden: g.overridden }) }}
+                  <span
+                    class="tpl-group-name"
+                    :title="t('settings.sqlTemplatesCount', { total: g.entries.length, overridden: g.overridden })"
+                  >
+                    {{ t(g.labelKey) }}
+                  </span>
+                  <span v-if="g.overridden" class="tpl-group-badge">
+                    {{ t('settings.sqlTemplatesGroupOverridden', { n: g.overridden }) }}
                   </span>
                 </template>
                 <div v-for="e in g.entries" :key="e.key" class="tpl-item">
                   <div class="tpl-item-head">
-                    <span class="tpl-usage">{{ t(e.usage) }}</span>
-                    <el-tag v-if="e.dialect" size="small" type="info">
+                    <span class="tpl-usage" :title="e.key">{{ t(e.usage) }}</span>
+                    <el-tag v-if="showDialectTag && e.dialect" size="small" type="info">
                       {{ t('dbKind.' + e.dialect) }}
                     </el-tag>
-                    <el-tag v-if="tplDraft[e.key]?.trim()" size="small" type="warning">
+                    <span v-if="tplDraft[e.key]?.trim()" class="tpl-overridden">
                       {{ t('settings.sqlTemplatesOverridden') }}
-                    </el-tag>
+                    </span>
                     <el-button
                       size="small"
                       text
-                      :icon="RefreshLeft"
-                      :title="t('settings.sqlTemplatesResetOne')"
                       :disabled="!tplDraft[e.key]?.trim()"
                       @click="tplDraft[e.key] = ''"
-                    />
+                    >
+                      {{ t('settings.sqlTemplatesResetOne') }}
+                    </el-button>
                   </div>
-                  <div class="tpl-item-sub">
+                  <div class="tpl-item-meta">
                     <span class="tpl-key" :title="e.key">{{ t('settings.sqlTemplatesKey') }}: {{ e.key }}</span>
                     <span v-if="e.placeholders.length" class="tpl-ph">
-                      {{ t('settings.sqlTemplatesPlaceholders') }}
                       <code v-for="p in e.placeholders" :key="p" class="tpl-ph-code">{{ '{' + p + '}' }}</code>
                     </span>
                   </div>
                   <el-input
                     v-model="tplDraft[e.key]"
                     type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 8 }"
+                    :autosize="{ minRows: 1, maxRows: 8 }"
                     :placeholder="e.builtin"
                     spellcheck="false"
                   />
@@ -645,7 +650,12 @@
               v-if="!tplGroups.length"
               icon="obj_query"
               :title="t('settings.sqlTemplatesEmpty')"
-            />
+              :hint="tplHasFilter ? t('settings.sqlTemplatesEmptyFiltered') : undefined"
+            >
+              <el-button v-if="tplHasFilter" size="small" @click="clearFilters">
+                {{ t('settings.sqlTemplatesClearFilters') }}
+              </el-button>
+            </EmptyState>
           </div>
         </template>
 
@@ -749,8 +759,6 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { objectIcon } from '../utils/objectIcons'
 import {
-  Expand,
-  Fold,
   FolderOpened,
   RefreshLeft,
 } from '@element-plus/icons-vue'
@@ -938,6 +946,7 @@ const TPL_KINDS = [
 ] as const
 
 const tplKindOptions = computed(() => [
+  { value: '__all__', label: t('settings.sqlTemplatesFilterAll') },
   { value: '__default__', label: t('settings.sqlTemplatesKindDefault') },
   ...TPL_KINDS.map((k) => ({ value: k, label: t('dbKind.' + k) })),
 ])
@@ -967,23 +976,27 @@ interface TplGroup {
   overridden: number
 }
 
-const tplGroups = computed<TplGroup[]>(() => {
-  const kw = tplSearch.value.trim().toLowerCase()
+/** 单条匹配：种类筛选 → 覆盖状态 → 搜索（key / 用途 / SQL / 组名） */
+function matchEntry(e: SqlTemplateSpec): boolean {
   const kindSet = new Set(tplKinds.value)
+  if (kindSet.size && !kindSet.has(e.dialect === '' ? '__default__' : e.dialect)) return false
+  const overridden = Boolean((tplDraft.value[e.key] ?? '').trim())
   const coverage = tplCoverage.value
-  const matched = tplSpecs.value.filter((e) => {
-    if (kindSet.size && !kindSet.has(e.dialect === '' ? '__default__' : e.dialect)) return false
-    const overridden = Boolean((tplDraft.value[e.key] ?? '').trim())
-    if (coverage === 'overridden' && !overridden) return false
-    if (coverage === 'plain' && overridden) return false
-    if (kw) {
-      const hay = `${e.key} ${e.builtin} ${t(e.usage)} ${t('tplGroup.' + e.group)}`.toLowerCase()
-      if (!hay.includes(kw)) return false
-    }
-    return true
-  })
+  if (coverage === 'overridden' && !overridden) return false
+  if (coverage === 'plain' && overridden) return false
+  const kw = tplSearch.value.trim().toLowerCase()
+  if (kw) {
+    const hay = `${e.key} ${e.builtin} ${t(e.usage)} ${t('tplGroup.' + e.group)}`.toLowerCase()
+    if (!hay.includes(kw)) return false
+  }
+  return true
+}
+
+const tplMatched = computed(() => tplSpecs.value.filter(matchEntry))
+
+const tplGroups = computed<TplGroup[]>(() => {
   const groups = new Map<string, SqlTemplateSpec[]>()
-  for (const e of matched) {
+  for (const e of tplMatched.value) {
     const list = groups.get(e.group) ?? []
     list.push(e)
     groups.set(e.group, list)
@@ -1001,6 +1014,59 @@ const tplGroups = computed<TplGroup[]>(() => {
       overridden: entries.filter((e) => (tplDraft.value[e.key] ?? '').trim()).length,
     }))
 })
+
+/** 匹配总数（筛选反馈条） */
+const tplTotal = computed(() => tplMatched.value.length)
+
+/** 是否有任一筛选激活（搜索 / 种类 / 覆盖状态） */
+const tplHasFilter = computed(
+  () => Boolean(tplSearch.value.trim()) || tplKinds.value.length > 0 || tplCoverage.value !== 'all',
+)
+
+/** 筛选反馈条文案：种类 × 覆盖状态 × 关键词 */
+const tplCriteria = computed(() => {
+  const parts: string[] = []
+  if (tplKinds.value.length) {
+    parts.push(
+      tplKinds.value
+        .map((k) => t(k === '__default__' ? 'settings.sqlTemplatesKindDefault' : 'dbKind.' + k))
+        .join('、'),
+    )
+  }
+  if (tplCoverage.value !== 'all') {
+    parts.push(
+      tplCoverage.value === 'overridden'
+        ? t('settings.sqlTemplatesFilterOverridden')
+        : t('settings.sqlTemplatesFilterPlain'),
+    )
+  }
+  if (tplSearch.value.trim()) parts.push(`“${tplSearch.value.trim()}”`)
+  return parts.join(' × ')
+})
+
+/** 种类筛选生效时同屏全是该种类，隐藏 dialect 徽标降噪 */
+const showDialectTag = computed(() => tplKinds.value.length === 0)
+
+function tplKindOn(v: string): boolean {
+  return tplKinds.value.includes(v)
+}
+
+function toggleKind(v: string): void {
+  if (v === '__all__') {
+    tplKinds.value = []
+    return
+  }
+  const set = new Set(tplKinds.value)
+  if (set.has(v)) set.delete(v)
+  else set.add(v)
+  tplKinds.value = [...set]
+}
+
+function clearFilters(): void {
+  tplSearch.value = ''
+  tplKinds.value = []
+  tplCoverage.value = 'all'
+}
 
 function tplExpandAll(): void {
   tplOpenGroups.value = TPL_GROUP_ORDER.filter((g) => tplGroups.value.some((grp) => grp.key === g))
@@ -1304,22 +1370,75 @@ async function resetAllTemplates(): Promise<void> {
 /* —— SQL 模板 —— */
 .tpl-tools {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.tpl-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.tpl-tools-spacer {
-  flex: 1;
-}
-
 .tpl-search {
-  width: 180px;
+  width: 240px;
 }
 
-.tpl-kinds {
-  width: 200px;
+.tpl-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tpl-chip {
+  border: 1px solid var(--el-border-color);
+  background: transparent;
+  color: var(--el-text-color-regular);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.tpl-chip:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-5);
+}
+
+.tpl-chip.is-on {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+}
+
+.tpl-chip:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
+}
+
+.tpl-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: var(--pd-radius-md, 6px);
+  background: var(--el-fill-color-lighter);
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.tpl-filterbar-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tpl-collapse {
@@ -1348,10 +1467,14 @@ async function resetAllTemplates(): Promise<void> {
   color: var(--el-text-color-primary);
 }
 
-.tpl-group-count {
+.tpl-group-badge {
   margin-left: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-radius: 999px;
+  padding: 0 8px;
+  line-height: 1.6;
 }
 
 .tpl-item {
@@ -1364,7 +1487,7 @@ async function resetAllTemplates(): Promise<void> {
 .tpl-item-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 4px;
 }
 
@@ -1372,9 +1495,27 @@ async function resetAllTemplates(): Promise<void> {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tpl-item-sub {
+.tpl-overridden {
+  flex: none;
+  font-size: 11px;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-radius: 999px;
+  padding: 0 8px;
+  line-height: 1.7;
+}
+
+.tpl-item-head .el-button {
+  margin-left: auto;
+}
+
+.tpl-item-meta {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1389,6 +1530,7 @@ async function resetAllTemplates(): Promise<void> {
 }
 
 .tpl-ph {
+  margin-left: auto;
   font-size: 12px;
   color: var(--el-text-color-secondary);
   display: flex;
@@ -1403,4 +1545,5 @@ async function resetAllTemplates(): Promise<void> {
   padding: 0 4px;
   font-size: 11px;
 }
+
 </style>

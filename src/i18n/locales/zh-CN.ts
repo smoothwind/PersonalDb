@@ -985,8 +985,11 @@ query: {
     sqlTemplatesResetOne: '恢复内置',
     sqlTemplatesResetConfirm: '将清除全部自定义覆盖并恢复内置模板，确定继续？',
     sqlTemplatesOverridden: '已覆盖',
-    sqlTemplatesPlaceholders: '占位符：',
+    sqlTemplatesGroupOverridden: '{n} 已覆盖',
     sqlTemplatesEmpty: '没有匹配的模板',
+    sqlTemplatesEmptyFiltered: '当前筛选条件下没有匹配项，可调整或清除筛选',
+    sqlTemplatesFilterActive: '筛选：{criteria} · 匹配 {count} 条',
+    sqlTemplatesClearFilters: '清除筛选',
   },
   tplGroup: {
     paging: '查询分页',
