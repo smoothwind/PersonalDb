@@ -13,6 +13,7 @@ use base64::Engine;
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 
+use crate::db::templates;
 use crate::error::{AppError, DbResult};
 
 use super::dialect::{SqlDialect, SqliteDialect};
@@ -210,12 +211,7 @@ impl DatabaseDriver for SqliteDriver {
         blocking(move || {
             let conn = lock(&conn);
             let mut stmt = conn
-                .prepare(
-                    "SELECT name, CASE type WHEN 'table' THEN 'TABLE' ELSE 'VIEW' END \
-                     FROM sqlite_master \
-                     WHERE type IN ('table','view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' \
-                     ORDER BY 1",
-                )
+                .prepare(&templates::resolve("tables.sqlite", builtin_sql::TABLES))
                 .map_err(sql_err)?;
             let rows = stmt
                 .query_map([], |r| {
@@ -245,10 +241,7 @@ impl DatabaseDriver for SqliteDriver {
         blocking(move || {
             let conn = lock(&conn);
             let mut stmt = conn
-                .prepare(
-                    "SELECT name, type, \"notnull\", dflt_value, pk \
-                     FROM pragma_table_info(?) ORDER BY cid",
-                )
+                .prepare(&templates::resolve("columns.sqlite", builtin_sql::COLUMNS))
                 .map_err(sql_err)?;
             let rows = stmt
                 .query_map([&table], |r| {
@@ -289,7 +282,7 @@ impl DatabaseDriver for SqliteDriver {
         blocking(move || {
             let conn = lock(&conn);
             let mut stmt = conn
-                .prepare("SELECT name, \"unique\", origin FROM pragma_index_list(?) ORDER BY seq")
+                .prepare(&templates::resolve("indexes.sqlite", builtin_sql::INDEXES))
                 .map_err(sql_err)?;
             let metas: Vec<(String, bool, bool)> = stmt
                 .query_map([&table], |r| {
@@ -303,7 +296,10 @@ impl DatabaseDriver for SqliteDriver {
             let mut idx_cols: Vec<(usize, String, String)> = Vec::new();
             for (i, (name, _, _)) in metas.iter().enumerate() {
                 let mut cs = conn
-                    .prepare("SELECT name FROM pragma_index_info(?) ORDER BY seqno")
+                    .prepare(&templates::resolve(
+                        "indexes.sqlite.info",
+                        builtin_sql::INDEX_INFO,
+                    ))
                     .map_err(sql_err)?;
                 let rows = cs.query_map([name], |r| r.get::<_, Option<String>>(0)).map_err(sql_err)?;
                 for r in rows {
@@ -594,4 +590,17 @@ mod tests {
         drop(d);
         let _ = std::fs::remove_file(&file);
     }
+}
+
+/// 驱动层内置 SQL（模板注册表：方法与设置页规约共用，避免两处维护）。
+/// PRAGMA 表值函数参数为 `?`（覆盖时不得增删占位符）。
+pub(crate) mod builtin_sql {
+    pub const TABLES: &str = "SELECT name, CASE type WHEN 'table' THEN 'TABLE' ELSE 'VIEW' END \
+         FROM sqlite_master \
+         WHERE type IN ('table','view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' \
+         ORDER BY 1";
+    pub const COLUMNS: &str = "SELECT name, type, \"notnull\", dflt_value, pk \
+         FROM pragma_table_info(?) ORDER BY cid";
+    pub const INDEXES: &str = "SELECT name, \"unique\", origin FROM pragma_index_list(?) ORDER BY seq";
+    pub const INDEX_INFO: &str = "SELECT name FROM pragma_index_info(?) ORDER BY seqno";
 }

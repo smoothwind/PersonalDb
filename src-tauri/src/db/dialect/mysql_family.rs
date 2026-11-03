@@ -3,6 +3,7 @@
 
 use crate::db::objects::{CatalogQuery, DbObjectType};
 use crate::db::plan;
+use crate::db::templates;
 use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 
 use super::{base64_to_hex, Capabilities, DdlQuery, DdlStrategy, SqlDialect};
@@ -60,6 +61,15 @@ pub struct MySqlFamilyDialect {
 }
 
 impl MySqlFamilyDialect {
+    /// 模板 key 用数据库种类（方言共用，按模式分流）
+    fn template_kind(&self) -> &'static str {
+        if self.ob {
+            "oceanbase"
+        } else {
+            "mysql"
+        }
+    }
+
     pub fn mysql() -> Self {
         Self { ob: false }
     }
@@ -126,24 +136,13 @@ impl SqlDialect for MySqlFamilyDialect {
         if self.ob {
             return None;
         }
-        Some(
-            "SELECT t.PROCESSLIST_ID AS id, COALESCE(t.PROCESSLIST_USER, '') AS `user`, \
-             d.LOCK_TYPE, d.LOCK_MODE, \
-             COALESCE(CONCAT_WS('.', d.OBJECT_SCHEMA, d.OBJECT_NAME), '') AS target, \
-             COALESCE(d.INDEX_NAME, '') AS index_name, d.LOCK_STATUS, \
-             COALESCE(t.PROCESSLIST_INFO, '') AS sql_text \
-             FROM performance_schema.data_locks d \
-             LEFT JOIN performance_schema.threads t ON t.THREAD_ID = d.THREAD_ID"
-                .into(),
-        )
+        templates::resolve_opt("locks.mysql", Some(BUILTIN_LOCKS.to_string()))
     }
 
     fn server_sessions_sql(&self) -> Option<String> {
-        Some(
-            "SELECT CAST(Id AS CHAR) AS id, User, Host, '' AS program, Command AS state, \
-             CAST(Time AS CHAR) AS secs, COALESCE(State,'') AS extra, COALESCE(Info,'') AS sql_text \
-             FROM information_schema.processlist WHERE Id <> CONNECTION_ID() ORDER BY Time DESC"
-                .into(),
+        templates::resolve_opt(
+            &format!("sessions.{}", self.template_kind()),
+            Some(BUILTIN_SESSIONS.to_string()),
         )
     }
 
@@ -230,15 +229,16 @@ impl SqlDialect for MySqlFamilyDialect {
         name: &str,
     ) -> Option<DdlQuery> {
         let ident = qualified_ident(self, schema, name);
-        let (sql, idx) = match obj {
-            DbObjectType::View => (format!("SHOW CREATE VIEW {ident}"), 1),
-            DbObjectType::Function => (format!("SHOW CREATE FUNCTION {ident}"), 2),
-            DbObjectType::Procedure => (format!("SHOW CREATE PROCEDURE {ident}"), 2),
-            DbObjectType::Trigger => (format!("SHOW CREATE TRIGGER {ident}"), 2),
+        let (tpl, idx) = match obj {
+            DbObjectType::View => ("SHOW CREATE VIEW {table}", 1),
+            DbObjectType::Function => ("SHOW CREATE FUNCTION {table}", 2),
+            DbObjectType::Procedure => ("SHOW CREATE PROCEDURE {table}", 2),
+            DbObjectType::Trigger => ("SHOW CREATE TRIGGER {table}", 2),
             _ => return None,
         };
+        let key = format!("objectDdl.{}.{}", self.template_kind(), obj.key());
         Some(DdlQuery {
-            sql,
+            sql: templates::substitute(&templates::resolve(&key, tpl), &[("table", &ident)]),
             params: vec![],
             value_index: idx,
         })
@@ -249,7 +249,11 @@ impl SqlDialect for MySqlFamilyDialect {
             Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(table)),
             None => self.quote_ident(table),
         };
-        format!("SELECT * FROM {ident} LIMIT {limit}")
+        let tpl = templates::resolve(
+            &format!("previewRows.{}", self.template_kind()),
+            "SELECT * FROM {table} LIMIT {limit}",
+        );
+        templates::substitute(&tpl, &[("table", &ident), ("limit", &limit.to_string())])
     }
 
     fn catalog_query(&self, obj: DbObjectType, _schema: Option<&str>) -> Option<CatalogQuery> {
@@ -287,7 +291,10 @@ impl SqlDialect for MySqlFamilyDialect {
             DbObjectType::Sequence => return None,
         };
         Some(CatalogQuery {
-            sql: sql.to_string(),
+            sql: templates::resolve(
+                &format!("catalog.{}.{}", self.template_kind(), obj.key()),
+                sql,
+            ),
             has_param: true,
             name_index: 0,
             comment_index: if with_comment { Some(1) } else { None },
@@ -323,7 +330,10 @@ impl SqlDialect for MySqlFamilyDialect {
             DbObjectType::Sequence => return None,
         };
         Some(CatalogQuery {
-            sql: sql.to_string(),
+            sql: templates::resolve(
+                &format!("catalogCount.{}.{}", self.template_kind(), obj.key()),
+                sql,
+            ),
             has_param: true,
             name_index: 0,
             comment_index: None,
@@ -332,38 +342,62 @@ impl SqlDialect for MySqlFamilyDialect {
     }
 
     fn table_partitioned_query(&self, schema: Option<&str>, table: &str) -> Option<String> {
-        let cond = match schema.filter(|s| !s.is_empty()) {
-            Some(s) => format!("TABLE_SCHEMA = {}", self.quote_string(s)),
-            None => "TABLE_SCHEMA = DATABASE()".to_string(),
+        let schema_expr = match schema.filter(|s| !s.is_empty()) {
+            Some(s) => self.quote_string(s),
+            None => "DATABASE()".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            &format!("partitioned.{}", self.template_kind()),
             "SELECT COUNT(*) FROM information_schema.PARTITIONS \
-             WHERE {cond} AND TABLE_NAME = {} AND PARTITION_NAME IS NOT NULL",
-            self.quote_string(table)
+             WHERE TABLE_SCHEMA = {schema} AND TABLE_NAME = {table} \
+               AND PARTITION_NAME IS NOT NULL",
+        );
+        Some(templates::substitute(
+            &tpl,
+            &[("schema", &schema_expr), ("table", &self.quote_string(table))],
         ))
     }
 
     fn schema_snapshot_sql(&self, schema: Option<&str>) -> Option<String> {
-        let cond = match schema.filter(|s| !s.is_empty()) {
-            Some(s) => format!("t.TABLE_SCHEMA = {}", self.quote_string(s)),
-            None => "t.TABLE_SCHEMA = DATABASE()".to_string(),
+        let schema_expr = match schema.filter(|s| !s.is_empty()) {
+            Some(s) => self.quote_string(s),
+            None => "DATABASE()".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            &format!("snapshot.{}", self.template_kind()),
             "SELECT t.TABLE_NAME, t.TABLE_TYPE, c.COLUMN_NAME, c.COLUMN_TYPE, \
              t.TABLE_COMMENT, c.COLUMN_COMMENT \
              FROM information_schema.TABLES t \
              JOIN information_schema.COLUMNS c \
                ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME \
-             WHERE {cond} ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION"
-        ))
+             WHERE t.TABLE_SCHEMA = {schema} ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION",
+        );
+        Some(templates::substitute(&tpl, &[("schema", &schema_expr)]))
     }
 
     fn explain_sql(&self, sql: &str) -> crate::error::DbResult<String> {
         let trimmed = sql.trim().trim_end_matches(';').to_string();
-        Ok(format!("EXPLAIN FORMAT=JSON {trimmed}"))
+        let tpl = templates::resolve(
+            &format!("explain.{}", self.template_kind()),
+            "EXPLAIN FORMAT=JSON {sql}",
+        );
+        Ok(templates::substitute(&tpl, &[("sql", &trimmed)]))
     }
 
     fn parse_explain(&self, json_text: &str) -> crate::error::DbResult<crate::db::plan::PlanNode> {
         plan::parse_mysql(json_text)
     }
 }
+
+/// 会话/锁视图内置 SQL（模板注册表规约采集与 resolve 兜底共用）
+const BUILTIN_LOCKS: &str = "SELECT t.PROCESSLIST_ID AS id, COALESCE(t.PROCESSLIST_USER, '') AS `user`, \
+     d.LOCK_TYPE, d.LOCK_MODE, \
+     COALESCE(CONCAT_WS('.', d.OBJECT_SCHEMA, d.OBJECT_NAME), '') AS target, \
+     COALESCE(d.INDEX_NAME, '') AS index_name, d.LOCK_STATUS, \
+     COALESCE(t.PROCESSLIST_INFO, '') AS sql_text \
+     FROM performance_schema.data_locks d \
+     LEFT JOIN performance_schema.threads t ON t.THREAD_ID = d.THREAD_ID";
+
+const BUILTIN_SESSIONS: &str = "SELECT CAST(Id AS CHAR) AS id, User, Host, '' AS program, Command AS state, \
+     CAST(Time AS CHAR) AS secs, COALESCE(State,'') AS extra, COALESCE(Info,'') AS sql_text \
+     FROM information_schema.processlist WHERE Id <> CONNECTION_ID() ORDER BY Time DESC";

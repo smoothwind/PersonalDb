@@ -349,6 +349,30 @@ export const storageResetDir = (key: string) =>
 export const storageOpenDir = (key: string) =>
   invoke<string>('storage_open_dir', { key })
 
+/** SQL 模板规约条目（设置页「SQL 模板」） */
+export interface SqlTemplateSpec {
+  /** 模板 key（如 `paged.oracle` / `catalog.mysql.tables`） */
+  key: string
+  /** 分组 key（i18n：`tplCat.<category>`） */
+  category: string
+  /** 数据库种类 key（'' = 通用默认） */
+  dialect: string
+  /** 占位符名（不含花括号） */
+  placeholders: string[]
+  /** 内置默认 */
+  builtin: string
+  /** 用户覆盖（null = 未覆盖，生效值即内置） */
+  overrideValue: string | null
+}
+
+export const sqlTemplatesSpec = () => invoke<SqlTemplateSpec[]>('sql_templates_spec')
+
+/** 用户覆盖表（仅含用户设置项；解析链 = 方言覆盖 → 通用默认 → 内置兜底） */
+export const sqlTemplatesOverrides = () => invoke<Record<string, string>>('sql_templates_overrides')
+
+export const sqlTemplatesSave = (overrides: Record<string, string>) =>
+  invoke<Record<string, string>>('sql_templates_save', { overrides })
+
 export const workspaceSave = (data: WorkspaceFile) =>
   invoke<string>('workspace_save', { data })
 

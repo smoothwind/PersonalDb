@@ -3,6 +3,7 @@
 //! 目录查询基于 `sqlite_master` + PRAGMA 表值函数（bundled SQLite ≥ 3.35）。
 
 use crate::db::objects::{CatalogQuery, DbObjectType};
+use crate::db::templates;
 use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 
 use super::{base64_to_hex, Capabilities, DdlQuery, DdlStrategy, SqlDialect, TableChange};
@@ -186,26 +187,35 @@ impl SqlDialect for SqliteDialect {
         name: &str,
     ) -> Option<DdlQuery> {
         let t = Self::master_type(obj)?;
+        let tpl = templates::resolve(
+            &format!("objectDdl.sqlite.{}", obj.key()),
+            "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = {type} AND name = ?",
+        );
         Some(DdlQuery {
-            sql: format!(
-                "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = {t} AND name = ?"
-            ),
+            sql: templates::substitute(&tpl, &[("type", t)]),
             params: vec![name.to_string()],
             value_index: 0,
         })
     }
 
     fn preview_rows_sql(&self, _schema: Option<&str>, table: &str, limit: u32) -> String {
-        format!("SELECT * FROM {} LIMIT {limit}", self.quote_ident(table))
+        let tpl = templates::resolve(
+            "previewRows.sqlite",
+            "SELECT * FROM {table} LIMIT {limit}",
+        );
+        templates::substitute(&tpl, &[("table", &self.quote_ident(table)), ("limit", &limit.to_string())])
     }
 
     fn catalog_query(&self, obj: DbObjectType, _schema: Option<&str>) -> Option<CatalogQuery> {
         let t = Self::master_type(obj)?;
         // sqlite_autoindex_* 为约束自动索引；sqlite_sequence 为 WITHOUT ROWID 辅助表
         Some(CatalogQuery {
-            sql: format!(
-                "SELECT name, NULL FROM sqlite_master \
-                 WHERE type = {t} AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY 1"
+            sql: templates::resolve(
+                &format!("catalog.sqlite.{}", obj.key()),
+                &format!(
+                    "SELECT name, NULL FROM sqlite_master \
+                     WHERE type = {t} AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY 1"
+                ),
             ),
             has_param: false,
             name_index: 0,
@@ -217,8 +227,11 @@ impl SqlDialect for SqliteDialect {
     fn catalog_count_query(&self, obj: DbObjectType, _schema: Option<&str>) -> Option<CatalogQuery> {
         let t = Self::master_type(obj)?;
         Some(CatalogQuery {
-            sql: format!(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = {t} AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+            sql: templates::resolve(
+                &format!("catalogCount.sqlite.{}", obj.key()),
+                &format!(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = {t} AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+                ),
             ),
             has_param: false,
             name_index: 0,
@@ -229,21 +242,22 @@ impl SqlDialect for SqliteDialect {
 
     /// 补全快照：sqlite_master × pragma_table_info（表值函数，bundled ≥ 3.16 可用）
     fn schema_snapshot_sql(&self, _schema: Option<&str>) -> Option<String> {
-        Some(
+        Some(templates::resolve(
+            "snapshot.sqlite",
             "SELECT m.name, UPPER(m.type), c.name, c.type, \
                     NULL, NULL \
              FROM sqlite_master m \
              JOIN pragma_table_info(m.name) c \
              WHERE m.type IN ('table', 'view') \
                AND m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\' \
-             ORDER BY m.name, c.cid"
-                .into(),
-        )
+             ORDER BY m.name, c.cid",
+        ))
     }
 
     fn explain_sql(&self, sql: &str) -> crate::error::DbResult<String> {
         let trimmed = sql.trim().trim_end_matches(';').to_string();
-        Ok(format!("EXPLAIN QUERY PLAN {trimmed}"))
+        let tpl = templates::resolve("explain.sqlite", "EXPLAIN QUERY PLAN {sql}");
+        Ok(templates::substitute(&tpl, &[("sql", &trimmed)]))
     }
 
     /// SQLite 计划为行式输出（多行多列），不走 JSON 文本解析；

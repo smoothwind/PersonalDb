@@ -27,6 +27,7 @@ fn storage_dir_infos() -> Vec<StorageDirInfo> {
         (StorageCategory::Workspaces, "storage.catWorkspaces"),
         (StorageCategory::Drivers, "storage.catDrivers"),
         (StorageCategory::History, "storage.catHistory"),
+        (StorageCategory::SqlTemplates, "storage.catSqlTemplates"),
     ]
     .into_iter()
     .map(|(cat, label_key)| {
@@ -328,6 +329,27 @@ pub fn db_build_dml(req: crate::db::dml::DmlRequest) -> DbResult<Vec<String>> {
     crate::db::dml::build_dml(&req)
 }
 
+/// SQL 模板规约全量条目（设置页「SQL 模板」编辑列表）
+#[tauri::command]
+pub fn sql_templates_spec() -> Vec<crate::db::templates::TemplateSpecEntry> {
+    crate::db::templates::spec()
+}
+
+/// SQL 模板用户覆盖表（key → 覆盖 SQL，仅含用户设置项；前端据此 + 内置兜底解析）
+#[tauri::command]
+pub fn sql_templates_overrides() -> std::collections::HashMap<String, String> {
+    crate::db::templates::overrides_snapshot()
+}
+
+/// 保存 SQL 模板覆盖（空白值视为未覆盖并剪裁），返回保存后的覆盖表
+#[tauri::command]
+pub fn sql_templates_save(
+    overrides: std::collections::HashMap<String, String>,
+) -> DbResult<std::collections::HashMap<String, String>> {
+    crate::db::templates::save(overrides)?;
+    Ok(crate::db::templates::overrides_snapshot())
+}
+
 /// 是否为存储目录内的敏感数据文件（连接/分组/密文配置/工作区/快捷指令/驱动/历史库）。
 /// 前端若被注入，这两个命令等同于任意文件读写——禁止触碰受保护数据防凭据/配置篡改。
 fn is_storage_guarded_file(path: &str) -> bool {
@@ -341,6 +363,7 @@ fn is_storage_guarded_file(path: &str) -> bool {
         Workspaces,
         Drivers,
         History,
+        SqlTemplates,
     ]
     .into_iter()
     .any(|c| {

@@ -15,6 +15,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_gaussdb::types::Type;
 use tokio_gaussdb::{Client, Config as GaussConfig, NoTls, Row};
 
+use crate::db::templates;
 use crate::error::{AppError, DbResult};
 
 use super::dialect::{PostgresDialect, SqlDialect};
@@ -265,9 +266,7 @@ impl DatabaseDriver for GaussDriver {
         let conn = self.pool.acquire().await?;
         let rows = conn
             .query(
-                "SELECT nspname FROM pg_namespace \
-                 WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema' \
-                 ORDER BY nspname",
+                &templates::resolve("databases.gaussdb", builtin_sql::DATABASES),
                 &[],
             )
             .await?;
@@ -279,11 +278,7 @@ impl DatabaseDriver for GaussDriver {
         let conn = self.pool.acquire().await?;
         let rows = conn
             .query(
-                "SELECT tablename, 'TABLE', obj_description(('\"' || schemaname || '\".\"' || tablename || '\"')::regclass, 'pg_class') \
-                 FROM pg_tables WHERE schemaname = $1 \
-                 UNION ALL \
-                 SELECT viewname, 'VIEW', NULL FROM pg_views WHERE schemaname = $1 \
-                 ORDER BY 1",
+                &templates::resolve("tables.gaussdb", builtin_sql::TABLES),
                 &[&schema],
             )
             .await?;
@@ -306,11 +301,7 @@ impl DatabaseDriver for GaussDriver {
         let conn = self.pool.acquire().await?;
         let rows = conn
             .query(
-                "SELECT column_name, data_type, is_nullable, column_default, \
-                 col_description(('\"' || table_schema || '\".\"' || table_name || '\"')::regclass, ordinal_position) \
-                 FROM information_schema.columns \
-                 WHERE table_schema = $1 AND table_name = $2 \
-                 ORDER BY ordinal_position",
+                &templates::resolve("columns.gaussdb", builtin_sql::COLUMNS),
                 &[&schema, &table],
             )
             .await?;
@@ -459,10 +450,7 @@ impl DatabaseDriver for GaussDriver {
         let conn = self.pool.acquire().await?;
         let row = conn
             .query_opt(
-                "SELECT p.prokind::text, pg_get_function_arguments(p.oid), \
-                 pg_get_function_result(p.oid) \
-                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
-                 WHERE n.nspname = $1 AND p.proname = $2 LIMIT 1",
+                &templates::resolve("routines.gaussdb", builtin_sql::ROUTINES),
                 &[&schema, &name],
             )
             .await?;
@@ -504,13 +492,7 @@ impl DatabaseDriver for GaussDriver {
         let conn = self.pool.acquire().await?;
         let rows = conn
             .query(
-                "SELECT i.relname, ix.indisunique, ix.indisprimary, pg_get_indexdef(ix.indexrelid) \
-                 FROM pg_index ix \
-                 JOIN pg_class i ON i.oid = ix.indexrelid \
-                 JOIN pg_class t ON t.oid = ix.indrelid \
-                 JOIN pg_namespace n ON n.oid = t.relnamespace \
-                 WHERE n.nspname = $1 AND t.relname = $2 \
-                 ORDER BY ix.indisprimary DESC, i.relname",
+                &templates::resolve("indexes.gaussdb", builtin_sql::INDEXES),
                 &[&schema, &table],
             )
             .await?;
@@ -595,4 +577,33 @@ impl std::fmt::Debug for GaussDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GaussDriver").finish_non_exhaustive()
     }
+}
+
+/// 驱动层内置 SQL（模板注册表：方法与设置页规约共用，避免两处维护）。
+/// 参数占位符 `$1..`（覆盖时不得增删占位符）。
+pub(crate) mod builtin_sql {
+    pub const DATABASES: &str = "SELECT nspname FROM pg_namespace \
+         WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema' \
+         ORDER BY nspname";
+    pub const TABLES: &str = "SELECT tablename, 'TABLE', obj_description(('\"' || schemaname || '\".\"' || tablename || '\"')::regclass, 'pg_class') \
+         FROM pg_tables WHERE schemaname = $1 \
+         UNION ALL \
+         SELECT viewname, 'VIEW', NULL FROM pg_views WHERE schemaname = $1 \
+         ORDER BY 1";
+    pub const COLUMNS: &str = "SELECT column_name, data_type, is_nullable, column_default, \
+         col_description(('\"' || table_schema || '\".\"' || table_name || '\"')::regclass, ordinal_position) \
+         FROM information_schema.columns \
+         WHERE table_schema = $1 AND table_name = $2 \
+         ORDER BY ordinal_position";
+    pub const INDEXES: &str = "SELECT i.relname, ix.indisunique, ix.indisprimary, pg_get_indexdef(ix.indexrelid) \
+         FROM pg_index ix \
+         JOIN pg_class i ON i.oid = ix.indexrelid \
+         JOIN pg_class t ON t.oid = ix.indrelid \
+         JOIN pg_namespace n ON n.oid = t.relnamespace \
+         WHERE n.nspname = $1 AND t.relname = $2 \
+         ORDER BY ix.indisprimary DESC, i.relname";
+    pub const ROUTINES: &str = "SELECT p.prokind::text, pg_get_function_arguments(p.oid), \
+         pg_get_function_result(p.oid) \
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+         WHERE n.nspname = $1 AND p.proname = $2 LIMIT 1";
 }

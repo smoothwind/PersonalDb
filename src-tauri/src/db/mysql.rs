@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use mysql_async::prelude::*;
 use mysql_async::{Conn, OptsBuilder, Row, Value};
 
+use crate::db::templates;
 use crate::error::{AppError, DbResult};
 
 use super::dialect::{MySqlFamilyDialect, SqlDialect};
@@ -231,8 +232,9 @@ impl DatabaseDriver for MySqlDriver {
 
     async fn list_databases(&self) -> DbResult<Vec<String>> {
         let mut conn = self.pool.get_conn().await?;
-        let rows: Vec<mysql_async::Row> =
-            conn.query("SHOW DATABASES").await?;
+        let rows: Vec<mysql_async::Row> = conn
+            .query(templates::resolve("databases.mysql", builtin_sql::DATABASES))
+            .await?;
         Ok(rows
             .iter()
             .filter_map(|r| r.get::<String, _>(0))
@@ -247,12 +249,7 @@ impl DatabaseDriver for MySqlDriver {
             .ok_or_else(|| AppError::General("未指定数据库，请在连接配置或顶部下拉中选择".into()))?;
         let mut conn = self.pool.get_conn().await?;
         let rows: Vec<mysql_async::Row> = conn
-            .exec(
-                "SELECT table_name, table_type, table_comment \
-                 FROM information_schema.tables \
-                 WHERE table_schema = ? ORDER BY table_name",
-                (db,),
-            )
+            .exec(templates::resolve("tables.mysql", builtin_sql::TABLES), (db,))
             .await?;
         Ok(rows
             .iter()
@@ -281,10 +278,7 @@ impl DatabaseDriver for MySqlDriver {
         let mut conn = self.pool.get_conn().await?;
         let rows: Vec<mysql_async::Row> = conn
             .exec(
-                "SELECT column_name, column_type, is_nullable, column_default, column_comment, column_key \
-                 FROM information_schema.columns \
-                 WHERE table_schema = ? AND table_name = ? \
-                 ORDER BY ordinal_position",
+                templates::resolve("columns.mysql", builtin_sql::COLUMNS),
                 (db, table),
             )
             .await?;
@@ -416,10 +410,7 @@ impl DatabaseDriver for MySqlDriver {
         let mut conn = self.pool.get_conn().await?;
         let rows: Vec<Row> = conn
             .exec(
-                "SELECT parameter_mode, parameter_name, dtd_identifier \
-                 FROM information_schema.parameters \
-                 WHERE specific_schema = ? AND specific_name = ? \
-                 ORDER BY ordinal_position",
+                templates::resolve("routines.mysql", builtin_sql::ROUTINES),
                 (db.clone(), name),
             )
             .await?;
@@ -436,8 +427,7 @@ impl DatabaseDriver for MySqlDriver {
             .collect();
         let return_type = if is_func {
             conn.exec_first::<String, _, _>(
-                "SELECT COALESCE(dtd_identifier, data_type) FROM information_schema.routines \
-                 WHERE routine_schema = ? AND specific_name = ? AND routine_type = 'FUNCTION'",
+                templates::resolve("routines.mysql.return", builtin_sql::ROUTINE_RETURN),
                 (db, name),
             )
             .await?
@@ -457,10 +447,7 @@ impl DatabaseDriver for MySqlDriver {
         let mut conn = self.pool.get_conn().await?;
         let rows: Vec<Row> = conn
             .exec(
-                "SELECT index_name, non_unique, column_name, index_name = 'PRIMARY' \
-                 FROM information_schema.statistics \
-                 WHERE table_schema = ? AND table_name = ? \
-                 ORDER BY index_name, seq_in_index",
+                templates::resolve("indexes.mysql", builtin_sql::INDEXES),
                 (db, table),
             )
             .await?;
@@ -489,4 +476,27 @@ impl DatabaseDriver for MySqlDriver {
             .and_then(|r| r.get::<Option<String>, _>(value_index).flatten())
             .unwrap_or_default())
     }
+}
+
+/// 驱动层内置 SQL（模板注册表：方法与设置页规约共用，避免两处维护）。
+/// 参数占位符 `?`（绑定顺序与原实现一致，覆盖时不得增删占位符）。
+pub(crate) mod builtin_sql {
+    pub const DATABASES: &str = "SHOW DATABASES";
+    pub const TABLES: &str = "SELECT table_name, table_type, table_comment \
+         FROM information_schema.tables \
+         WHERE table_schema = ? ORDER BY table_name";
+    pub const COLUMNS: &str = "SELECT column_name, column_type, is_nullable, column_default, column_comment, column_key \
+         FROM information_schema.columns \
+         WHERE table_schema = ? AND table_name = ? \
+         ORDER BY ordinal_position";
+    pub const INDEXES: &str = "SELECT index_name, non_unique, column_name, index_name = 'PRIMARY' \
+         FROM information_schema.statistics \
+         WHERE table_schema = ? AND table_name = ? \
+         ORDER BY index_name, seq_in_index";
+    pub const ROUTINES: &str = "SELECT parameter_mode, parameter_name, dtd_identifier \
+         FROM information_schema.parameters \
+         WHERE specific_schema = ? AND specific_name = ? \
+         ORDER BY ordinal_position";
+    pub const ROUTINE_RETURN: &str = "SELECT COALESCE(dtd_identifier, data_type) FROM information_schema.routines \
+         WHERE routine_schema = ? AND specific_name = ? AND routine_type = 'FUNCTION'";
 }

@@ -29,6 +29,19 @@ impl DbObjectType {
             DbObjectType::Trigger => "触发器",
         }
     }
+
+    /// 模板 key 用小写复数名
+    pub fn key(self) -> &'static str {
+        match self {
+            DbObjectType::Table => "tables",
+            DbObjectType::View => "views",
+            DbObjectType::Index => "indexes",
+            DbObjectType::Sequence => "sequences",
+            DbObjectType::Function => "functions",
+            DbObjectType::Procedure => "procedures",
+            DbObjectType::Trigger => "triggers",
+        }
+    }
 }
 
 /// 对象实例信息

@@ -23,6 +23,7 @@ pub enum StorageCategory {
     Workspaces,
     Drivers,
     History,
+    SqlTemplates,
 }
 
 impl StorageCategory {
@@ -34,6 +35,7 @@ impl StorageCategory {
             StorageCategory::Workspaces => "workspaces",
             StorageCategory::Drivers => "drivers",
             StorageCategory::History => "history",
+            StorageCategory::SqlTemplates => "sqltemplates",
         }
     }
 
@@ -45,6 +47,7 @@ impl StorageCategory {
             "workspaces" => Some(StorageCategory::Workspaces),
             "drivers" => Some(StorageCategory::Drivers),
             "history" => Some(StorageCategory::History),
+            "sqltemplates" => Some(StorageCategory::SqlTemplates),
             _ => None,
         }
     }
@@ -58,6 +61,7 @@ impl StorageCategory {
             StorageCategory::Workspaces => &["workspaces.json"],
             StorageCategory::Drivers => &["drivers.json"],
             StorageCategory::History => &["history.db"],
+            StorageCategory::SqlTemplates => &["sqltemplates.json"],
         }
     }
 }

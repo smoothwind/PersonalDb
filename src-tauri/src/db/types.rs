@@ -52,6 +52,25 @@ impl DbKind {
             DbKind::Jdbc => "JDBC",
         }
     }
+
+    /// 模板 key / 传输标识用小写名（与 serde 序列化一致）
+    pub fn key(self) -> &'static str {
+        match self {
+            DbKind::MySql => "mysql",
+            DbKind::PostgreSql => "postgresql",
+            DbKind::GaussDb => "gaussdb",
+            DbKind::OceanBase => "oceanbase",
+            DbKind::OceanBaseOracle => "oceanbase-oracle",
+            DbKind::Oracle => "oracle",
+            DbKind::Sqlite => "sqlite",
+            DbKind::Jdbc => "jdbc",
+        }
+    }
+
+    /// 本编译产物中是否可用（Oracle 系依赖 feature）
+    pub fn available(self) -> bool {
+        !matches!(self, DbKind::Oracle | DbKind::OceanBaseOracle) || cfg!(feature = "oracle")
+    }
 }
 
 /// 连接配置

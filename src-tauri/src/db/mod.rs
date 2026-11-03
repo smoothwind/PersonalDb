@@ -17,4 +17,5 @@ pub mod pool;
 pub mod postgres;
 pub mod registry;
 pub mod sqlite;
+pub mod templates;
 pub mod types;

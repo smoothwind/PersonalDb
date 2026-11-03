@@ -527,6 +527,80 @@
           </div>
         </template>
 
+        <!-- SQL 模板 -->
+        <template v-else-if="active === 'sqlTemplates'">
+          <div class="pref-section">{{ t('settings.sqlTemplatesSection') }}</div>
+          <el-alert
+            :title="t('settings.sqlTemplatesHint')"
+            type="info"
+            show-icon
+            :closable="false"
+            class="storage-hint"
+          />
+          <div class="tpl-tools">
+            <el-input
+              v-model="tplSearch"
+              size="small"
+              clearable
+              :placeholder="t('settings.sqlTemplatesSearch')"
+              class="tpl-search"
+            />
+            <el-button size="small" :icon="RefreshLeft" @click="resetAllTemplates">
+              {{ t('settings.sqlTemplatesResetAll') }}
+            </el-button>
+            <el-button
+              size="small"
+              type="primary"
+              :loading="tplSaving"
+              :disabled="!tplDirty"
+              @click="saveTemplates"
+            >
+              {{ t('settings.sqlTemplatesSave') }}
+            </el-button>
+            <el-tag v-if="tplDirty" size="small" type="warning">
+              {{ t('settings.sqlTemplatesUnsaved') }}
+            </el-tag>
+          </div>
+          <div class="tpl-list">
+            <div v-for="g in tplGroups" :key="g.key" class="tpl-group">
+              <div class="tpl-group-head">{{ t(g.labelKey) }}</div>
+              <div v-for="e in g.entries" :key="e.key" class="tpl-item">
+                <div class="tpl-item-head">
+                  <span class="tpl-key">{{ e.key }}</span>
+                  <el-tag v-if="e.dialect" size="small" type="info">{{ e.dialect }}</el-tag>
+                  <el-tag v-if="tplDraft[e.key]?.trim()" size="small" type="warning">
+                    {{ t('settings.sqlTemplatesOverridden') }}
+                  </el-tag>
+                  <el-button
+                    size="small"
+                    text
+                    :icon="RefreshLeft"
+                    :title="t('settings.sqlTemplatesResetOne')"
+                    :disabled="!tplDraft[e.key]?.trim()"
+                    @click="tplDraft[e.key] = ''"
+                  />
+                </div>
+                <el-input
+                  v-model="tplDraft[e.key]"
+                  type="textarea"
+                  :autosize="{ minRows: 3, maxRows: 12 }"
+                  :placeholder="e.builtin"
+                  spellcheck="false"
+                />
+                <div v-if="e.placeholders.length" class="tpl-ph">
+                  {{ t('settings.sqlTemplatesPlaceholders') }}
+                  <code v-for="p in e.placeholders" :key="p" class="tpl-ph-code">{{ '{' + p + '}' }}</code>
+                </div>
+              </div>
+            </div>
+            <EmptyState
+              v-if="!tplGroups.length"
+              icon="obj_query"
+              :title="t('settings.sqlTemplatesEmpty')"
+            />
+          </div>
+        </template>
+
         <!-- 快捷键 -->
         <template v-else-if="active === 'shortcuts'">
           <div class="pref-section">{{ t('settings.shortcutsSection') }}</div>
@@ -630,21 +704,26 @@ import {
   FolderOpened,
   RefreshLeft,
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import CodeViewer from './CodeViewer.vue'
 import CellDisplay from './cell-viewers/CellDisplay.vue'
 import ValueRuleEditor from './ValueRuleEditor.vue'
+import EmptyState from './EmptyState.vue'
 import { plsqlDeveloperPreset, defaultFormatPrefs } from '../stores/preferences'
 import { usePreferencesStore } from '../stores/preferences'
 import { useUpdateStore } from '../stores/update'
+import { setResolvedTemplates } from '../utils/sqlTemplates'
 import { SHORTCUT_ACTIONS, eventToCombo } from '../utils/shortcuts'
 import {
+  sqlTemplatesSave,
+  sqlTemplatesSpec,
   storageInfo,
   storageOpenDir,
   storageResetDir,
   storageSetDir,
+  type SqlTemplateSpec,
   type StorageDirInfo,
 } from '../api/db'
 import type { CellValue, SemanticType } from '../types/db'
@@ -738,6 +817,7 @@ const categories = computed(() => [
   { key: 'result', label: t('settings.resultSection'), icon: objectIcon('act_view_grid') },
   { key: 'dataformat', label: t('settings.dataFormatSection'), icon: objectIcon('act_format') },
   { key: 'storage', label: t('settings.storageSection'), icon: objectIcon('obj_folder') },
+  { key: 'sqlTemplates', label: t('settings.sqlTemplatesSection'), icon: objectIcon('obj_query') },
   { key: 'shortcuts', label: t('settings.shortcutsSection'), icon: objectIcon('act_keyboard') },
   { key: 'about', label: t('settings.tabAbout'), icon: objectIcon('act_info') },
 ])
@@ -781,6 +861,105 @@ function openStorageDir(key: string): void {
   void storageOpenDir(key)
     .then((path) => revealItemInDir(path))
     .catch((e) => ElMessage.error(String(e)))
+}
+
+/** —— SQL 模板 —— */
+const tplSpecs = ref<SqlTemplateSpec[]>([])
+/** 草稿：key → 覆盖文本（'' = 未覆盖，生效内置） */
+const tplDraft = ref<Record<string, string>>({})
+const tplSearch = ref('')
+const tplSaving = ref(false)
+
+/** 分组展示顺序（与后端 spec 类别一致） */
+const TPL_CATEGORY_ORDER = [
+  'paged',
+  'preview',
+  'previewRows',
+  'catalog',
+  'catalogCount',
+  'objectDdl',
+  'explain',
+  'sessions',
+  'locks',
+  'snapshot',
+  'partitioned',
+  'driver',
+] as const
+
+const tplGroups = computed(() => {
+  const kw = tplSearch.value.trim().toLowerCase()
+  const matched = kw
+    ? tplSpecs.value.filter(
+        (e) => e.key.toLowerCase().includes(kw) || e.builtin.toLowerCase().includes(kw),
+      )
+    : tplSpecs.value
+  const groups = new Map<string, SqlTemplateSpec[]>()
+  for (const e of matched) {
+    const list = groups.get(e.category) ?? []
+    list.push(e)
+    groups.set(e.category, list)
+  }
+  return [...groups.entries()]
+    .sort(
+      (a, b) =>
+        TPL_CATEGORY_ORDER.indexOf(a[0] as (typeof TPL_CATEGORY_ORDER)[number]) -
+        TPL_CATEGORY_ORDER.indexOf(b[0] as (typeof TPL_CATEGORY_ORDER)[number]),
+    )
+    .map(([key, entries]) => ({ key, labelKey: `tplCat.${key}`, entries }))
+})
+
+/** 有未保存修改 */
+const tplDirty = computed(() =>
+  tplSpecs.value.some(
+    (e) => (tplDraft.value[e.key] ?? '').trim() !== (e.overrideValue ?? '').trim(),
+  ),
+)
+
+async function reloadTemplates(): Promise<void> {
+  try {
+    tplSpecs.value = await sqlTemplatesSpec()
+    const draft: Record<string, string> = {}
+    for (const e of tplSpecs.value) draft[e.key] = e.overrideValue ?? ''
+    tplDraft.value = draft
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+void reloadTemplates()
+
+/** 保存全部覆盖（空白值由后端剪裁视为未覆盖），并即时刷新运行时生效模板 */
+async function saveTemplates(): Promise<void> {
+  tplSaving.value = true
+  try {
+    const overrides: Record<string, string> = {}
+    for (const [k, v] of Object.entries(tplDraft.value)) {
+      if (v.trim()) overrides[k] = v
+    }
+    const resolved = await sqlTemplatesSave(overrides)
+    setResolvedTemplates(resolved)
+    await reloadTemplates()
+    ElMessage.success(t('settings.sqlTemplatesSaved'))
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    tplSaving.value = false
+  }
+}
+
+/** 全部恢复内置（确认后立即保存空覆盖） */
+async function resetAllTemplates(): Promise<void> {
+  try {
+    await ElMessageBox.confirm(t('settings.sqlTemplatesResetConfirm'), t('settings.sqlTemplatesResetAll'), {
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  const draft: Record<string, string> = {}
+  for (const e of tplSpecs.value) draft[e.key] = ''
+  tplDraft.value = draft
+  await saveTemplates()
 }
 </script>
 
@@ -1018,5 +1197,70 @@ function openStorageDir(key: string): void {
 .storage-actions {
   display: flex;
   gap: 8px;
+}
+
+/* —— SQL 模板 —— */
+.tpl-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tpl-search {
+  width: 220px;
+}
+
+.tpl-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.tpl-group-head {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--el-text-color-primary);
+}
+
+.tpl-item {
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--pd-radius-md, 6px);
+  margin-bottom: 8px;
+}
+
+.tpl-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.tpl-key {
+  font-family: var(--el-font-family, monospace);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tpl-ph {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tpl-ph-code {
+  background: var(--el-fill-color-light);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 11px;
 }
 </style>

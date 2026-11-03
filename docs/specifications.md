@@ -784,6 +784,17 @@
 - **落点**：管线整体抽为 `composables/useResultPipeline.ts`（QueryTabPane 仅消费 `matrix/propIndex/filteredIdx/valueFilters/distinctCache/resultRows`；Worker 生命周期随 composable 卸载自清理）。
 - **反应式不变量**：分页续拉是**原地 `result.rows.push`**（不换 `result` 对象），故过滤/去重 watch 必须显式跟踪 `result.rows.length`，否则续拉行不参与过滤与渲染；Worker 收到 `postMessage` 前必须 `toRaw`（reactive proxy 无法结构化克隆，抛 `DataCloneError`，须 catch 后同步回退）。
 
+## SPEC-TEMPLATE-1 查询 SQL 模板化（内置 + 用户覆盖）
+
+- **动机（回归）**：分页续拉别名 `_pdb_rn` 在 Oracle 系（未引用标识符不允许 `_` 开头）触发 ORA-00911。修复后别名一律**字母开头**（`pdb_rn` / `pdb_p`），且各类数据库独立模板，杜绝跨方言串扰（Oracle 系永不见 LIMIT、LIMIT 系永不见 ROWNUM）。
+- **解析顺序**：`<key>.<kind>` 方言覆盖 → `<key>.default` 通用默认（仅 paged/preview 族有 default 条目）→ 内置兜底。前端分页/预览以**用户覆盖表（稀疏）**参与解析（内置兜底由前端承担，后端不下发内置值以免 default 条目被遮蔽）；后端方言/驱动层在方法内 `templates::resolve(key, 内置)` 逐点解析。
+- **注册表**：`src-tauri/src/db/templates.rs`（`OnceLock<RwLock<HashMap>>` 覆盖 + thread-local `BYPASS`；`resolve`/`resolve_opt`/`substitute`（`{name}` 占位符，未知保留）/`save`（空白剪裁、写文件、原子换内存）/`spec()`（设置页全量条目）/`resolved()`（生效值，测试用））。存储类别 `SqlTemplates` → `sqltemplates.json`。
+- **key 约定**：`paged.<kind>`（{sql}/{offset}/{limit}/{end}）、`preview.<kind>`/`preview.default`（{database}/{table}/{limit}）、`previewRows.<kind>`（{table}/{limit}）、`catalog(.user).<kind>.<obj>`、`catalogCount.<kind>.<obj>`（Oracle 系由目录 SQL 派生 COUNT）、`objectDdl.<kind>.<obj>`（mysql {table}、sqlite {type}，PG/Oracle 绑定参数版）、`explain.<kind>`（{sql}）、`sessions/sessionsFallback/locks/snapshot/partitioned.<kind>`（snapshot/partitioned {schema}/{table} = 引用字面量或当前库表达式）、驱动层 `databases/tables/columns/indexes/routines(.user/.return/.info).<kind>`。`kind` 取 `DbKind::key()`；jdbc 仅 `previewRows.jdbc`（对象目录走 JDBC DatabaseMetaData，无 SQL）。
+- **设置页**：`SettingsDialog.vue` 分类「SQL 模板」（`tplCat.*` 分组 + 搜索 + 单条/全部恢复 + 保存）；保存后 `sql_templates_save` 返回覆盖表，前端 `setResolvedTemplates` **即时生效**（无需重启）。
+- **安全红线（不提供模板覆盖）**：`kill_session_sql`（id 纯数字校验防注入）、标识符/字符串引用、INSERT 字面量生成、`recompile_sql`。覆盖模板占位符/绑定参数**不可增删**（前端分页模板缺 `{sql}` 时回退内置防打穿语法）。
+- **命令**：`sql_templates_spec` / `sql_templates_overrides` / `sql_templates_save`；`sqltemplates.json` 已列入受保护存储文件（`is_storage_guarded_file`）。
+- **落点**：`db/templates.rs`、各 `db/dialect/*.rs` 与 `db/{mysql,postgres,gaussdb,sqlite,oracle}.rs`（`builtin_sql` 常量模块 + resolve 接线）、`utils/sqlTemplates.ts`、`stores/sqlTemplates.ts`、`SettingsDialog.vue`。
+
 ## 备注
 
 - 编辑器依赖：CodeMirror 6（`codemirror`、`@codemirror/lang-sql`、`@codemirror/theme-one-dark`）。

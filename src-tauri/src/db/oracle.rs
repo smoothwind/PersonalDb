@@ -9,6 +9,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime};
 
+use crate::db::templates;
 use crate::error::{AppError, DbResult};
 
 use super::dialect::{OracleDialect, SqlDialect};
@@ -265,12 +266,9 @@ impl DatabaseDriver for OracleDriver {
 
     async fn list_databases(&self) -> DbResult<Vec<String>> {
         let pool = self.pool.clone();
+        let sql = templates::resolve("databases.oracle", builtin_sql::DATABASES);
         let rows = tokio::task::spawn_blocking(move || {
-            Self::blocking_query_strings(
-                &pool,
-                "SELECT username FROM all_users ORDER BY username",
-                &[],
-            )
+            Self::blocking_query_strings(&pool, &sql, &[])
         })
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
@@ -280,19 +278,18 @@ impl DatabaseDriver for OracleDriver {
     async fn list_tables(&self, database: Option<&str>) -> DbResult<Vec<TableInfo>> {
         let pool = self.pool.clone();
         let schema = database.filter(|s| !s.is_empty()).map(str::to_string);
+        let (sql, params): (String, Vec<String>) = match schema {
+            Some(owner) => (
+                templates::resolve("tables.oracle", builtin_sql::TABLES),
+                vec![owner],
+            ),
+            None => (
+                templates::resolve("tables.oracle.user", builtin_sql::TABLES_USER),
+                vec![],
+            ),
+        };
         let rows = tokio::task::spawn_blocking(move || {
-            match schema.as_deref() {
-                Some(owner) => Self::blocking_query_strings(
-                    &pool,
-                    "SELECT table_name, table_type, comments FROM all_tab_comments WHERE owner = :1 ORDER BY table_name",
-                    &[owner.to_string()],
-                ),
-                None => Self::blocking_query_strings(
-                    &pool,
-                    "SELECT table_name, table_type, comments FROM user_tab_comments ORDER BY table_name",
-                    &[],
-                ),
-            }
+            Self::blocking_query_strings(&pool, &sql, &params)
         })
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
@@ -314,23 +311,18 @@ impl DatabaseDriver for OracleDriver {
         let pool = self.pool.clone();
         let schema = database.filter(|s| !s.is_empty()).map(str::to_string);
         let table = table.to_string();
+        let (sql, params): (String, Vec<String>) = match schema {
+            Some(owner) => (
+                templates::resolve("columns.oracle", builtin_sql::COLUMNS),
+                vec![owner, table],
+            ),
+            None => (
+                templates::resolve("columns.oracle.user", builtin_sql::COLUMNS_USER),
+                vec![table],
+            ),
+        };
         let rows = tokio::task::spawn_blocking(move || {
-            match schema.as_deref() {
-                Some(owner) => Self::blocking_query_strings(
-                    &pool,
-                    "SELECT column_name, data_type, nullable, data_default \
-                     FROM all_tab_columns WHERE owner = :1 AND table_name = :2 \
-                     ORDER BY column_id",
-                    &[owner.to_string(), table.clone()],
-                ),
-                None => Self::blocking_query_strings(
-                    &pool,
-                    "SELECT column_name, data_type, nullable, data_default \
-                     FROM user_tab_columns WHERE table_name = :1 \
-                     ORDER BY column_id",
-                    std::slice::from_ref(&table),
-                ),
-            }
+            Self::blocking_query_strings(&pool, &sql, &params)
         })
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
@@ -466,20 +458,18 @@ impl DatabaseDriver for OracleDriver {
         let pool = self.pool.clone();
         let schema = database.filter(|s| !s.is_empty()).map(str::to_string);
         let name = name.to_string();
-        let name_in = name.clone();
-        let rows = tokio::task::spawn_blocking(move || match schema.as_deref() {
-            Some(owner) => Self::blocking_query_strings(
-                &pool,
-                "SELECT argument_name, in_out, data_type, position FROM all_arguments \
-                 WHERE owner = :1 AND object_name = :2 AND package_name IS NULL ORDER BY position",
-                &[owner.to_string(), name_in.clone()],
+        let (sql, params): (String, Vec<String>) = match schema {
+            Some(owner) => (
+                templates::resolve("routines.oracle", builtin_sql::ROUTINES),
+                vec![owner, name.clone()],
             ),
-            None => Self::blocking_query_strings(
-                &pool,
-                "SELECT argument_name, in_out, data_type, position FROM user_arguments \
-                 WHERE object_name = :1 AND package_name IS NULL ORDER BY position",
-                std::slice::from_ref(&name_in),
+            None => (
+                templates::resolve("routines.oracle.user", builtin_sql::ROUTINES_USER),
+                vec![name.clone()],
             ),
+        };
+        let rows = tokio::task::spawn_blocking(move || {
+            Self::blocking_query_strings(&pool, &sql, &params)
         })
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
@@ -504,31 +494,18 @@ impl DatabaseDriver for OracleDriver {
         let pool = self.pool.clone();
         let schema = database.filter(|s| !s.is_empty()).map(str::to_string);
         let table = table.to_string();
-        let table_in = table.clone();
-        let rows = tokio::task::spawn_blocking(move || match schema.as_deref() {
-            Some(owner) => Self::blocking_query_strings(
-                &pool,
-                "SELECT i.index_name, i.uniqueness, c.column_name, c.column_position, \
-                        (SELECT COUNT(*) FROM all_constraints k \
-                         WHERE k.owner = i.owner AND k.index_name = i.index_name \
-                           AND k.constraint_type = 'P') \
-                 FROM all_ind_columns c \
-                 JOIN all_indexes i ON i.index_name = c.index_name AND i.owner = c.index_owner \
-                 WHERE i.table_owner = :1 AND i.table_name = :2 \
-                 ORDER BY i.index_name, c.column_position",
-                &[owner.to_string(), table_in.clone()],
+        let (sql, params): (String, Vec<String>) = match schema {
+            Some(owner) => (
+                templates::resolve("indexes.oracle", builtin_sql::INDEXES),
+                vec![owner, table],
             ),
-            None => Self::blocking_query_strings(
-                &pool,
-                "SELECT i.index_name, i.uniqueness, c.column_name, c.column_position, \
-                        (SELECT COUNT(*) FROM user_constraints k \
-                         WHERE k.index_name = i.index_name AND k.constraint_type = 'P') \
-                 FROM user_ind_columns c \
-                 JOIN user_indexes i ON i.index_name = c.index_name \
-                 WHERE i.table_name = :1 \
-                 ORDER BY i.index_name, c.column_position",
-                std::slice::from_ref(&table_in),
+            None => (
+                templates::resolve("indexes.oracle.user", builtin_sql::INDEXES_USER),
+                vec![table],
             ),
+        };
+        let rows = tokio::task::spawn_blocking(move || {
+            Self::blocking_query_strings(&pool, &sql, &params)
         })
         .await
         .map_err(|e| AppError::Db(e.to_string()))??;
@@ -551,5 +528,39 @@ impl DatabaseDriver for OracleDriver {
             |r| r.get(2).cloned().unwrap_or_default(),
         ))
     }
+}
+
+/// 驱动层内置 SQL（模板注册表：方法与设置页规约共用，避免两处维护）。
+/// 有 owner 走 ALL_ 视图（key `*.oracle`，绑定 `:1..`）；当前用户走 USER_ 视图
+/// （key `*.oracle.user`）。覆盖时不得增删绑定占位符。
+pub(crate) mod builtin_sql {
+    pub const DATABASES: &str = "SELECT username FROM all_users ORDER BY username";
+    pub const TABLES: &str = "SELECT table_name, table_type, comments FROM all_tab_comments WHERE owner = :1 ORDER BY table_name";
+    pub const TABLES_USER: &str = "SELECT table_name, table_type, comments FROM user_tab_comments ORDER BY table_name";
+    pub const COLUMNS: &str = "SELECT column_name, data_type, nullable, data_default \
+         FROM all_tab_columns WHERE owner = :1 AND table_name = :2 \
+         ORDER BY column_id";
+    pub const COLUMNS_USER: &str = "SELECT column_name, data_type, nullable, data_default \
+         FROM user_tab_columns WHERE table_name = :1 \
+         ORDER BY column_id";
+    pub const INDEXES: &str = "SELECT i.index_name, i.uniqueness, c.column_name, c.column_position, \
+                        (SELECT COUNT(*) FROM all_constraints k \
+                         WHERE k.owner = i.owner AND k.index_name = i.index_name \
+                           AND k.constraint_type = 'P') \
+                 FROM all_ind_columns c \
+                 JOIN all_indexes i ON i.index_name = c.index_name AND i.owner = c.index_owner \
+                 WHERE i.table_owner = :1 AND i.table_name = :2 \
+                 ORDER BY i.index_name, c.column_position";
+    pub const INDEXES_USER: &str = "SELECT i.index_name, i.uniqueness, c.column_name, c.column_position, \
+                        (SELECT COUNT(*) FROM user_constraints k \
+                         WHERE k.index_name = i.index_name AND k.constraint_type = 'P') \
+                 FROM user_ind_columns c \
+                 JOIN user_indexes i ON i.index_name = c.index_name \
+                 WHERE i.table_name = :1 \
+                 ORDER BY i.index_name, c.column_position";
+    pub const ROUTINES: &str = "SELECT argument_name, in_out, data_type, position FROM all_arguments \
+         WHERE owner = :1 AND object_name = :2 AND package_name IS NULL ORDER BY position";
+    pub const ROUTINES_USER: &str = "SELECT argument_name, in_out, data_type, position FROM user_arguments \
+         WHERE object_name = :1 AND package_name IS NULL ORDER BY position";
 }
 

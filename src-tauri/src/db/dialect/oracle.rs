@@ -2,6 +2,7 @@
 //! 无 owner（当前用户）时用 USER_ 视图（无参数）。
 
 use crate::db::objects::{CatalogQuery, DbObjectType};
+use crate::db::templates;
 use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 
 use super::{base64_to_hex, Capabilities, ColumnChange, DdlQuery, DdlStrategy, SqlDialect, TableChange};
@@ -19,6 +20,15 @@ impl OracleDialect {
 
     pub fn oceanbase() -> Self {
         Self { ob: true }
+    }
+
+    /// 模板 key 用数据库种类（方言共用，按模式分流）
+    fn template_kind(&self) -> &'static str {
+        if self.ob {
+            "oceanbase-oracle"
+        } else {
+            "oracle"
+        }
     }
 }
 
@@ -207,27 +217,12 @@ impl SqlDialect for OracleDialect {
     fn server_sessions_sql(&self) -> Option<String> {
         // OceanBase Oracle 模式：无 V$SESSION，使用 OB 兼容视图 V$OB_PROCESSLIST
         if self.ob {
-            return Some(
-                "SELECT TO_CHAR(ID) AS id, USER AS \"user\", \
-                 NVL(USER_HOST, NVL(SVR_IP, '-')) AS host, NVL(MODULE, '-') AS program, \
-                 NVL(COMMAND, '-') AS state, NVL(TO_CHAR(TIME), '0') AS secs, \
-                 NVL(STATE, '-') || DECODE(DB, NULL, '', ' · ' || DB) AS extra, \
-                 NVL(INFO, ' ') AS sql_text, '' AS blocking \
-                 FROM V$OB_PROCESSLIST ORDER BY TIME DESC"
-                    .into(),
-            )
+            return templates::resolve_opt(
+                "sessions.oceanbase-oracle",
+                Some(BUILTIN_SESSIONS_OB.to_string()),
+            );
         }
-        Some(
-            "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
-             NVL(s.machine, '-') AS host, NVL(s.program, '-') AS program, \
-             NVL(s.status, '-') AS state, NVL(TO_CHAR(s.seconds_in_wait), '0') AS secs, \
-             NVL(s.event, '-') AS extra, \
-             NVL((SELECT q.sql_text FROM v$sql q WHERE q.address = s.sql_address \
-               AND q.hash_value = s.sql_hash_value AND ROWNUM = 1), ' ') AS sql_text, \
-             NVL(TO_CHAR(s.blocking_session), '') AS blocking \
-             FROM v$session s WHERE s.sid <> USERENV('SID') ORDER BY s.sid"
-                .into(),
-        )
+        templates::resolve_opt("sessions.oracle", Some(BUILTIN_SESSIONS_ORACLE.to_string()))
     }
 
     fn server_sessions_fallback_sql(&self) -> Option<String> {
@@ -235,14 +230,9 @@ impl SqlDialect for OracleDialect {
         if self.ob {
             return None;
         }
-        Some(
-            "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
-             NVL(s.machine, '-') AS host, NVL(s.program, '-') AS program, \
-             NVL(s.status, '-') AS state, NVL(TO_CHAR(s.seconds_in_wait), '0') AS secs, \
-             NVL(s.event, '-') AS extra, ' ' AS sql_text, \
-             NVL(TO_CHAR(s.blocking_session), '') AS blocking \
-             FROM v$session s WHERE s.sid <> USERENV('SID') ORDER BY s.sid"
-                .into(),
+        templates::resolve_opt(
+            "sessionsFallback.oracle",
+            Some(BUILTIN_SESSIONS_FALLBACK.to_string()),
         )
     }
 
@@ -250,24 +240,12 @@ impl SqlDialect for OracleDialect {
         if self.ob {
             // OB 锁视图：LMODE/REQUEST 为字符串（'X'/'NONE' 等），不做数值 DECODE；
             // 无会话 id（终止按钮随之禁用）
-            return Some(
-                "SELECT SVR_IP || ':' || TO_CHAR(SVR_PORT) AS instance, '' AS id, \
-                 TO_CHAR(TRANS_ID) AS trans_id, TYPE, ID1, ID2, \
-                 LMODE AS held_mode, REQUEST AS request_mode, CTIME, BLOCK AS blocking \
-                 FROM V$OB_LOCKS ORDER BY TRANS_ID"
-                    .into(),
-            )
+            return templates::resolve_opt(
+                "locks.oceanbase-oracle",
+                Some(BUILTIN_LOCKS_OB.to_string()),
+            );
         }
-        Some(
-            "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
-             l.TYPE AS lock_type, DECODE(l.LMODE, 0, 'None', 1, 'Null', 2, 'Row-S', 3, 'Row-X', \
-             4, 'Share', 5, 'S/Row-X', 6, 'Exclusive', TO_CHAR(l.LMODE)) AS held_mode, \
-             DECODE(l.REQUEST, 0, '', TO_CHAR(l.REQUEST)) AS request_mode, \
-             l.ID1, l.ID2, NVL(s.machine, '-') AS host \
-             FROM v$lock l JOIN v$session s ON s.sid = l.sid \
-             WHERE l.TYPE IN ('TX', 'TM') ORDER BY l.TYPE, l.ID1, l.sid"
-                .into(),
-        )
+        templates::resolve_opt("locks.oracle", Some(BUILTIN_LOCKS_ORACLE.to_string()))
     }
 
     fn kill_session_sql(&self, id: &str, mode: &str) -> Option<String> {
@@ -415,7 +393,10 @@ impl SqlDialect for OracleDialect {
             ),
         };
         Some(DdlQuery {
-            sql,
+            sql: templates::resolve(
+                &format!("objectDdl.{}.{}", self.template_kind(), obj.key()),
+                &sql,
+            ),
             params,
             value_index: 0,
         })
@@ -426,7 +407,11 @@ impl SqlDialect for OracleDialect {
             Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(table)),
             None => self.quote_ident(table),
         };
-        format!("SELECT * FROM {ident} WHERE ROWNUM <= {limit}")
+        let tpl = templates::resolve(
+            &format!("previewRows.{}", self.template_kind()),
+            "SELECT * FROM {table} WHERE ROWNUM <= {limit}",
+        );
+        templates::substitute(&tpl, &[("table", &ident), ("limit", &limit.to_string())])
     }
 
     fn catalog_query(&self, obj: DbObjectType, schema: Option<&str>) -> Option<CatalogQuery> {
@@ -436,6 +421,12 @@ impl SqlDialect for OracleDialect {
         } else {
             user_query(obj)?
         };
+        // 目录模板 key：有 owner 参数走 ALL_ 变体；当前用户走 `.user` 变体
+        let key = if has_param {
+            format!("catalog.{}.{}", self.template_kind(), obj.key())
+        } else {
+            format!("catalog.{}.{}.user", self.template_kind(), obj.key())
+        };
         let comment_index = if spec.with_comment { Some(1) } else { None };
         let status_index = if spec.with_status {
             Some(if spec.with_comment { 2 } else { 1 })
@@ -443,7 +434,7 @@ impl SqlDialect for OracleDialect {
             None
         };
         Some(CatalogQuery {
-            sql: spec.sql.to_string(),
+            sql: templates::resolve(&key, spec.sql),
             has_param,
             name_index: 0,
             comment_index,
@@ -452,20 +443,15 @@ impl SqlDialect for OracleDialect {
     }
 
     fn catalog_count_query(&self, obj: DbObjectType, schema: Option<&str>) -> Option<CatalogQuery> {
-        let has_param = schema.filter(|s| !s.is_empty()).is_some();
-        let base: String = if has_param {
-            all_query(obj)?.sql.to_string()
-        } else {
-            user_query(obj)?.sql.to_string()
-        };
-        // 将 SELECT 列替换为 COUNT(*)：基于目录 SQL 派生，避免重复维护
+        // 由目录 SQL 派生 COUNT(*)：覆盖 `catalog.*` 后计数随之生效，避免重复维护
+        let base = self.catalog_query(obj, schema)?.sql;
         let count_sql = match base.split_once(" FROM ") {
             Some((_, rest)) => format!("SELECT COUNT(*) FROM {rest}"),
             None => return None,
         };
         Some(CatalogQuery {
             sql: count_sql,
-            has_param,
+            has_param: schema.filter(|s| !s.is_empty()).is_some(),
             name_index: 0,
             comment_index: None,
             status_index: None,
@@ -492,22 +478,27 @@ impl SqlDialect for OracleDialect {
 
     fn table_partitioned_query(&self, schema: Option<&str>, table: &str) -> Option<String> {
         let owner = match schema.filter(|s| !s.is_empty()) {
-            Some(s) => format!("owner = {}", self.quote_string(s)),
-            None => "owner = USER".to_string(),
+            Some(s) => self.quote_string(s),
+            None => "USER".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            &format!("partitioned.{}", self.template_kind()),
             "SELECT COUNT(*) FROM all_part_tables \
-             WHERE {owner} AND table_name = {}",
-            self.quote_string(table)
+             WHERE owner = {schema} AND table_name = {table}",
+        );
+        Some(templates::substitute(
+            &tpl,
+            &[("schema", &owner), ("table", &self.quote_string(table))],
         ))
     }
 
     fn schema_snapshot_sql(&self, schema: Option<&str>) -> Option<String> {
-        let cond = match schema.filter(|s| !s.is_empty()) {
-            Some(s) => format!("c.owner = {}", self.quote_string(s)),
-            None => "c.owner = USER".to_string(),
+        let owner = match schema.filter(|s| !s.is_empty()) {
+            Some(s) => self.quote_string(s),
+            None => "USER".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            &format!("snapshot.{}", self.template_kind()),
             "SELECT c.table_name, NVL(o.object_type, 'TABLE'), c.column_name, c.data_type, \
                tc.comments, cc.comments, c.column_id \
              FROM all_tab_columns c \
@@ -516,8 +507,9 @@ impl SqlDialect for OracleDialect {
              LEFT JOIN all_tab_comments tc ON tc.owner = c.owner AND tc.table_name = c.table_name \
              LEFT JOIN all_objects o ON o.owner = c.owner AND o.object_name = c.table_name \
                AND o.object_type IN ('TABLE', 'VIEW') \
-             WHERE {cond} ORDER BY c.table_name, c.column_id"
-        ))
+             WHERE c.owner = {schema} ORDER BY c.table_name, c.column_id",
+        );
+        Some(templates::substitute(&tpl, &[("schema", &owner)]))
     }
 
     fn explain_sql(&self, _sql: &str) -> crate::error::DbResult<String> {
@@ -595,3 +587,40 @@ fn oracle_col_def(dialect: &OracleDialect, col: &ColumnChange) -> String {
     }
     s
 }
+
+/// 会话/锁视图内置 SQL（模板注册表规约采集与 resolve 兜底共用）
+const BUILTIN_SESSIONS_OB: &str = "SELECT TO_CHAR(ID) AS id, USER AS \"user\", \
+     NVL(USER_HOST, NVL(SVR_IP, '-')) AS host, NVL(MODULE, '-') AS program, \
+     NVL(COMMAND, '-') AS state, NVL(TO_CHAR(TIME), '0') AS secs, \
+     NVL(STATE, '-') || DECODE(DB, NULL, '', ' · ' || DB) AS extra, \
+     NVL(INFO, ' ') AS sql_text, '' AS blocking \
+     FROM V$OB_PROCESSLIST ORDER BY TIME DESC";
+
+const BUILTIN_SESSIONS_ORACLE: &str = "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
+     NVL(s.machine, '-') AS host, NVL(s.program, '-') AS program, \
+     NVL(s.status, '-') AS state, NVL(TO_CHAR(s.seconds_in_wait), '0') AS secs, \
+     NVL(s.event, '-') AS extra, \
+     NVL((SELECT q.sql_text FROM v$sql q WHERE q.address = s.sql_address \
+       AND q.hash_value = s.sql_hash_value AND ROWNUM = 1), ' ') AS sql_text, \
+     NVL(TO_CHAR(s.blocking_session), '') AS blocking \
+     FROM v$session s WHERE s.sid <> USERENV('SID') ORDER BY s.sid";
+
+const BUILTIN_SESSIONS_FALLBACK: &str = "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
+     NVL(s.machine, '-') AS host, NVL(s.program, '-') AS program, \
+     NVL(s.status, '-') AS state, NVL(TO_CHAR(s.seconds_in_wait), '0') AS secs, \
+     NVL(s.event, '-') AS extra, ' ' AS sql_text, \
+     NVL(TO_CHAR(s.blocking_session), '') AS blocking \
+     FROM v$session s WHERE s.sid <> USERENV('SID') ORDER BY s.sid";
+
+const BUILTIN_LOCKS_OB: &str = "SELECT SVR_IP || ':' || TO_CHAR(SVR_PORT) AS instance, '' AS id, \
+     TO_CHAR(TRANS_ID) AS trans_id, TYPE, ID1, ID2, \
+     LMODE AS held_mode, REQUEST AS request_mode, CTIME, BLOCK AS blocking \
+     FROM V$OB_LOCKS ORDER BY TRANS_ID";
+
+const BUILTIN_LOCKS_ORACLE: &str = "SELECT s.sid || ',' || s.serial# AS id, NVL(s.username, ' ') AS \"user\", \
+     l.TYPE AS lock_type, DECODE(l.LMODE, 0, 'None', 1, 'Null', 2, 'Row-S', 3, 'Row-X', \
+     4, 'Share', 5, 'S/Row-X', 6, 'Exclusive', TO_CHAR(l.LMODE)) AS held_mode, \
+     DECODE(l.REQUEST, 0, '', TO_CHAR(l.REQUEST)) AS request_mode, \
+     l.ID1, l.ID2, NVL(s.machine, '-') AS host \
+     FROM v$lock l JOIN v$session s ON s.sid = l.sid \
+     WHERE l.TYPE IN ('TX', 'TM') ORDER BY l.TYPE, l.ID1, l.sid";

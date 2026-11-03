@@ -6,8 +6,10 @@ import { i18n } from '../i18n'
 import { useConnectionStore } from './connections'
 import { useHistoryStore } from './history'
 import { usePreferencesStore } from './preferences'
+import { useSqlTemplatesStore } from './sqlTemplates'
 import { useLogStore, sqlTitle } from './logs'
 import { logger } from '../utils/logger'
+import { pagedSql, previewSelectSql } from '../utils/sqlTemplates'
 import { splitStatements } from '../utils/sqlSplit'
 import type { DbKind, DbObjectType, QueryResult, TabSnapshot } from '../types/db'
 
@@ -52,22 +54,9 @@ export interface QueryTab {
 
 let tabSeq = 0
 
+/** 双击表预览 SQL（`preview.<kind>` 覆盖 → `preview.default` → 内置） */
 function buildSelectSql(kind: DbKind, database: string, table: string): string {
-  switch (kind) {
-    case 'mysql':
-    case 'oceanbase':
-      return `SELECT * FROM \`${database}\`.\`${table}\` LIMIT 100;`
-    case 'postgresql':
-    case 'gaussdb':
-      return `SELECT * FROM "${database}"."${table}" LIMIT 100;`
-    case 'sqlite':
-      return `SELECT * FROM "${table}" LIMIT 100;`
-    case 'oracle':
-    case 'oceanbase-oracle':
-      return `SELECT * FROM "${table}" WHERE ROWNUM <= 100`
-    case 'jdbc':
-      return `SELECT * FROM \"${table}\"`
-  }
+  return previewSelectSql(kind, database, table)
 }
 
 /** 执行超时错误（错误条据此提供「调整超时」直达设置入口） */
@@ -100,6 +89,7 @@ export const useTabsStore = defineStore('tabs', () => {
   const prefsStore = usePreferencesStore()
   const historyStore = useHistoryStore()
   const logStore = useLogStore()
+  const tplStore = useSqlTemplatesStore()
 
   function openTab(input: {
     connectionId: string
@@ -503,13 +493,9 @@ export const useTabsStore = defineStore('tabs', () => {
     }
   }
 
-  /** 任意 SQL 包装为分页查询（与后端方言分页策略对应：Oracle ROWNUM / 其余 LIMIT OFFSET） */
+  /** 任意 SQL 包装为分页查询（模板 `paged.<kind>` 覆盖 → `paged.default` → 内置） */
   function wrapPaged(kind: DbKind, sql: string, offset: number, limit: number): string {
-    const inner = sql.trim().replace(/;+\s*$/, '')
-    if (kind === 'oracle' || kind === 'oceanbase-oracle') {
-      return `SELECT * FROM (SELECT t.*, ROWNUM _pdb_rn FROM (${inner}) t WHERE ROWNUM <= ${offset + limit}) WHERE _pdb_rn > ${offset}`
-    }
-    return `SELECT * FROM (${inner}) _pdb_p LIMIT ${limit} OFFSET ${offset}`
+    return pagedSql(kind, sql, offset, limit)
   }
 
   /** 滚动触底：按页续拉结果集 */
@@ -518,6 +504,7 @@ export const useTabsStore = defineStore('tabs', () => {
     const session = connStore.sessionOf(tab.connectionId)
     const base = tab.baseSql
     if (!session || !base || !tab.result) return
+    await tplStore.ensureLoaded()
     const prefs = prefsStore.result
     const total = tab.result.rows.length
     if (total >= prefs.maxTotalRows) {

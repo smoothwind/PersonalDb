@@ -4,6 +4,7 @@
 
 use crate::db::objects::{CatalogQuery, DbObjectType};
 use crate::db::plan::PlanNode;
+use crate::db::templates;
 use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 use crate::error::{AppError, DbResult};
 
@@ -128,7 +129,8 @@ impl SqlDialect for GenericDialect {
             Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(table)),
             None => self.quote_ident(table),
         };
-        format!("SELECT * FROM {ident}")
+        let tpl = templates::resolve("previewRows.jdbc", "SELECT * FROM {table}");
+        templates::substitute(&tpl, &[("table", &ident)])
     }
 
     fn catalog_query(&self, obj: DbObjectType, _schema: Option<&str>) -> Option<CatalogQuery> {

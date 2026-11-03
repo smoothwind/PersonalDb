@@ -1,6 +1,7 @@
 //! PostgreSQL 方言。参数占位符 `$1`（schema，默认 public）。
 
 use crate::db::objects::{CatalogQuery, DbObjectType};
+use crate::db::templates;
 use crate::db::types::{CellValue, ColumnInfo, ColumnMeta, SemanticType};
 
 use super::{base64_to_hex, Capabilities, ColumnChange, DdlQuery, DdlStrategy, SqlDialect, TableChange};
@@ -18,6 +19,15 @@ pub struct PostgresDialect {
 impl PostgresDialect {
     pub const fn gauss() -> Self {
         Self { gauss: true }
+    }
+
+    /// 模板 key 用数据库种类（方言共用，按变体分流）
+    fn template_kind(&self) -> &'static str {
+        if self.gauss {
+            "gaussdb"
+        } else {
+            "postgresql"
+        }
     }
 }
 
@@ -91,36 +101,18 @@ impl SqlDialect for PostgresDialect {
     fn server_sessions_sql(&self) -> Option<String> {
         if self.gauss {
             // openGauss / GaussDB：无 wait_event / pg_blocking_pids，等待信息取 enqueue
-            return Some(
-                "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
-                 COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
-                 COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint::text,'0') AS secs, \
-                 COALESCE(enqueue, CASE WHEN waiting THEN 'waiting' ELSE '-' END, '-') AS extra, \
-                 left(query, 800) AS sql_text, '' AS blocking \
-                 FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY query_start NULLS LAST"
-                    .into(),
+            return templates::resolve_opt(
+                "sessions.gaussdb",
+                Some(BUILTIN_SESSIONS_GAUSS.to_string()),
             );
         }
-        Some(
-            "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
-             COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
-             COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint::text,'0') AS secs, \
-             COALESCE(wait_event_type || '/' || wait_event, '-') AS extra, left(query, 800) AS sql_text, \
-             COALESCE(array_to_string(pg_blocking_pids(pid), ','), '') AS blocking \
-             FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY query_start NULLS LAST"
-                .into(),
-        )
+        templates::resolve_opt("sessions.postgresql", Some(BUILTIN_SESSIONS_PG.to_string()))
     }
 
     fn server_locks_sql(&self) -> Option<String> {
-        Some(
-            "SELECT l.pid::text AS id, COALESCE(a.usename, '') AS \"user\", l.locktype, l.mode, \
-             CASE WHEN l.granted THEN 'YES' ELSE 'NO' END AS granted, \
-             COALESCE(l.relation::regclass::text, '') AS target, \
-             COALESCE(a.state, '') AS state, COALESCE(a.query, '') AS sql_text \
-             FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid \
-             WHERE l.pid <> pg_backend_pid() ORDER BY l.granted, l.pid"
-                .into(),
+        templates::resolve_opt(
+            &format!("locks.{}", self.template_kind()),
+            Some(BUILTIN_LOCKS.to_string()),
         )
     }
 
@@ -241,9 +233,10 @@ impl SqlDialect for PostgresDialect {
         name: &str,
     ) -> Option<DdlQuery> {
         let s = schema.filter(|s| !s.is_empty()).unwrap_or("public").to_string();
+        let key = format!("objectDdl.{}.{}", self.template_kind(), obj.key());
         let q = |sql: String| {
             Some(DdlQuery {
-                sql,
+                sql: templates::resolve(&key, &sql),
                 params: vec![s.clone(), name.to_string()],
                 value_index: 0,
             })
@@ -282,7 +275,11 @@ impl SqlDialect for PostgresDialect {
             Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(table)),
             None => self.quote_ident(table),
         };
-        format!("SELECT * FROM {ident} LIMIT {limit}")
+        let tpl = templates::resolve(
+            &format!("previewRows.{}", self.template_kind()),
+            "SELECT * FROM {table} LIMIT {limit}",
+        );
+        templates::substitute(&tpl, &[("table", &ident), ("limit", &limit.to_string())])
     }
 
     fn catalog_query(&self, obj: DbObjectType, _schema: Option<&str>) -> Option<CatalogQuery> {
@@ -326,7 +323,10 @@ impl SqlDialect for PostgresDialect {
             }
         };
         Some(CatalogQuery {
-            sql: sql.to_string(),
+            sql: templates::resolve(
+                &format!("catalog.postgresql.{}", obj.key()),
+                sql,
+            ),
             has_param: true,
             name_index: 0,
             comment_index: Some(1),
@@ -371,7 +371,10 @@ impl SqlDialect for PostgresDialect {
             }
         };
         Some(CatalogQuery {
-            sql: sql.to_string(),
+            sql: templates::resolve(
+                &format!("catalogCount.postgresql.{}", obj.key()),
+                sql,
+            ),
             has_param: true,
             name_index: 0,
             comment_index: None,
@@ -388,21 +391,26 @@ impl SqlDialect for PostgresDialect {
             Some(s) => self.quote_string(s),
             None => "current_schema()".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            "partitioned.postgresql",
             "SELECT COUNT(*) FROM pg_catalog.pg_partitioned_table pt \
              JOIN pg_catalog.pg_class c ON c.oid = pt.partrelid \
              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-             WHERE c.relname = {} AND n.nspname = {schema_expr}",
-            self.quote_string(table)
+             WHERE c.relname = {table} AND n.nspname = {schema}",
+        );
+        Some(templates::substitute(
+            &tpl,
+            &[("schema", &schema_expr), ("table", &self.quote_string(table))],
         ))
     }
 
     fn schema_snapshot_sql(&self, schema: Option<&str>) -> Option<String> {
-        let cond = match schema.filter(|s| !s.is_empty()) {
-            Some(s) => format!("c.table_schema = {}", self.quote_string(s)),
-            None => "c.table_schema = current_schema()".to_string(),
+        let schema_expr = match schema.filter(|s| !s.is_empty()) {
+            Some(s) => self.quote_string(s),
+            None => "current_schema()".to_string(),
         };
-        Some(format!(
+        let tpl = templates::resolve(
+            &format!("snapshot.{}", self.template_kind()),
             "SELECT c.table_name, \
                CASE WHEN t.table_type = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END, \
                c.column_name, c.data_type, \
@@ -414,13 +422,18 @@ impl SqlDialect for PostgresDialect {
                ON t.table_schema = c.table_schema AND t.table_name = c.table_name \
              JOIN pg_catalog.pg_class pc ON pc.relname = c.table_name \
              JOIN pg_catalog.pg_namespace pn ON pn.oid = pc.relnamespace AND pn.nspname = c.table_schema \
-             WHERE {cond} ORDER BY c.table_name, c.ordinal_position"
-        ))
+             WHERE c.table_schema = {schema} ORDER BY c.table_name, c.ordinal_position",
+        );
+        Some(templates::substitute(&tpl, &[("schema", &schema_expr)]))
     }
 
     fn explain_sql(&self, sql: &str) -> crate::error::DbResult<String> {
         let trimmed = sql.trim().trim_end_matches(';').to_string();
-        Ok(format!("EXPLAIN (FORMAT JSON) {trimmed}"))
+        let tpl = templates::resolve(
+            &format!("explain.{}", self.template_kind()),
+            "EXPLAIN (FORMAT JSON) {sql}",
+        );
+        Ok(templates::substitute(&tpl, &[("sql", &trimmed)]))
     }
 
     fn parse_explain(&self, json_text: &str) -> crate::error::DbResult<crate::db::plan::PlanNode> {
@@ -499,3 +512,25 @@ fn pg_col_def(dialect: &PostgresDialect, col: &ColumnChange) -> String {
     }
     s
 }
+
+/// 会话/锁视图内置 SQL（模板注册表规约采集与 resolve 兜底共用）
+const BUILTIN_SESSIONS_PG: &str = "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
+     COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
+     COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint::text,'0') AS secs, \
+     COALESCE(wait_event_type || '/' || wait_event, '-') AS extra, left(query, 800) AS sql_text, \
+     COALESCE(array_to_string(pg_blocking_pids(pid), ','), '') AS blocking \
+     FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY query_start NULLS LAST";
+
+const BUILTIN_SESSIONS_GAUSS: &str = "SELECT pid::text AS id, usename AS \"user\", COALESCE(client_addr::text,'-') AS host, \
+     COALESCE(application_name,'-') AS program, COALESCE(state,'-') AS state, \
+     COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint::text,'0') AS secs, \
+     COALESCE(enqueue, CASE WHEN waiting THEN 'waiting' ELSE '-' END, '-') AS extra, \
+     left(query, 800) AS sql_text, '' AS blocking \
+     FROM pg_stat_activity WHERE pid <> pg_backend_pid() ORDER BY query_start NULLS LAST";
+
+const BUILTIN_LOCKS: &str = "SELECT l.pid::text AS id, COALESCE(a.usename, '') AS \"user\", l.locktype, l.mode, \
+     CASE WHEN l.granted THEN 'YES' ELSE 'NO' END AS granted, \
+     COALESCE(l.relation::regclass::text, '') AS target, \
+     COALESCE(a.state, '') AS state, COALESCE(a.query, '') AS sql_text \
+     FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid = l.pid \
+     WHERE l.pid <> pg_backend_pid() ORDER BY l.granted, l.pid";
