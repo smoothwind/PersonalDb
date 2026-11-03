@@ -528,7 +528,7 @@
 - **需求**：默认连接 Oracle / OceanBase Oracle **无需安装 OCI 客户端**；保留 OCI 方式供特殊环境使用。
 - **机制**：两类内置 sidecar，均经 NDJSON over stdio 桥接执行（一进程一连接）：
   - **Oracle** → `oracle-bridge`（Go + go-ora，纯 Oracle 协议），`build.rs` 调 Go 工具链编译；
-  - **OceanBase Oracle** → `ob-jdbc-bridge`（Java + OceanBase Connector/J），`build.rs` 调 Maven 打包 fat jar（**需 JRE 21+**）。
+  - **OceanBase Oracle** → `ob-jdbc-bridge`（Java + OceanBase Connector/J），`build.rs` 调 Maven 打包 fat jar（**需 JRE 8+**，`maven.compiler.release=8`）。
   - OceanBase 的 Oracle 模式本质是 **MySQL 协议 + OB 扩展能力位**（capability bit 27 `OB_CLIENT_SUPPORT_ORACLE_MODE`，服务端 `obmp_connect.cpp` 校验），标准 Oracle TNS 客户端（go-ora）无法连接 → 必须用 OB 官方驱动。缺 Go/Maven 则跳过并告警。
 - **选择规则**（`db/pool.rs#create_driver`）：`params.driver == "oci"` → OCI 驱动；否则对应内置桥接可用 → 桥接驱动；桥接缺失 → 回退 OCI 驱动。
 - **会话内 schema 切换**：桥接驱动 `execute` 前按 UI 选中库执行 `ALTER SESSION SET CURRENT_SCHEMA`（标识符经方言 `quote_ident` 转义；库切换跟踪 `current_schema`，`None` 复位为用户默认 schema，兼容 OB `user@tenant` 用户名取 user 部分）；切换失败 fail-hard；`ping` 直连 `query` 绕过切换逻辑（不打断会话内状态）。OCI 驱动连接池跨连接持有，**不做** schema 切换（沿用 owner 过滤语义）；元数据查询走 `user_*/all_*` + owner 绑定，不依赖 CURRENT_SCHEMA。

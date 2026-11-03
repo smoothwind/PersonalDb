@@ -34,7 +34,7 @@
 | ------------------------ | -------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------- |
 | MySQL 5.7 / 8.x          | `mysql_async`（Rust 原生）                                         | 3306       | 开箱即用                                                                                |
 | OceanBase（MySQL 模式）  | `mysql_async`                                                      | 2881       | 用户名按 OB 规范：`user@tenant[#cluster]`                                             |
-| OceanBase（Oracle 模式） | 内置 JDBC 驱动（OceanBase Connector/J）/ `oracle` crate 0.6（OCI） | 2881       | **实验性**；默认内置驱动免装 OCI（需 JRE 21+），用户名 `用户@租户`，Schema 留空 |
+| OceanBase（Oracle 模式） | 内置 JDBC 驱动（OceanBase Connector/J）/ `oracle` crate 0.6（OCI） | 2881       | **实验性**；默认内置驱动免装 OCI（需 JRE 8+），用户名 `用户@租户`，Schema 留空 |
 | PostgreSQL 12+           | `tokio-postgres` + deadpool                                        | 5432       | 开箱即用                                                                                |
 | GaussDB / openGauss      | `tokio-gaussdb`（官方原生，支持 sha256 / md5）                     | 5432       | 复用 PostgreSQL 方言并适配系统目录差异（`pg_sequences` / `pg_partitioned_table` / `wait_event` 缺失）；默认库 `postgres` |
 | Oracle 11g+              | 内置 Go 驱动（go-ora）/ `oracle` crate 0.6（ODPI-C）               | 1521       | 默认内置驱动**免安装 OCI**；可选 OCI 方式                                         |
@@ -94,7 +94,7 @@ npm run bundle:all   # 同时打包 MSI + NSIS（CI 用的就是这条）
 **默认走内置驱动，免安装 OCI**，运行时经 NDJSON over stdio 桥接执行：
 
 - **Oracle**：`oracle-bridge`（`src-tauri/oracle-bridge/`，纯 Go 的 [go-ora](https://github.com/sijms/go-ora)）→ 无需 Oracle Instant Client
-- **OceanBase Oracle 模式**：`jdbc-bridge`（`src-tauri/jdbc-bridge/`，Java + OceanBase Connector/J）→ 需 **JRE 21+**（经 JAVA_HOME/PATH 定位 java）
+- **OceanBase Oracle 模式**：`jdbc-bridge`（`src-tauri/jdbc-bridge/`，Java + OceanBase Connector/J）→ 需 **JRE 8+**（经 JAVA_HOME/PATH 定位 java）
   - OceanBase 的 Oracle 模式实际是 **MySQL 协议 + OB 扩展能力位**，标准 Oracle TNS 客户端（含 go-ora）无法连接，故使用官方 JDBC 驱动
   - 连接要点：用户名填 **`用户@租户`**（如 `myuser@mytenant`），**Schema 留空**（Oracle 模式 schema 默认 = 用户名）
 
@@ -155,7 +155,7 @@ src-tauri/src/              # Rust 后端
 └── error.rs                # 统一错误类型
 
 src-tauri/oracle-bridge/    # Go sidecar（go-ora）：免 OCI 的 Oracle 协议实现
-src-tauri/jdbc-bridge/      # Java sidecar（OceanBase Connector/J）：OceanBase Oracle 模式（需 JRE 21+）
+src-tauri/jdbc-bridge/      # Java sidecar（OceanBase Connector/J）：OceanBase Oracle 模式（需 JRE 8+）
 ```
 
 ## 扩展新数据库

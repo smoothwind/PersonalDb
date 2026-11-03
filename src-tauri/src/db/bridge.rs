@@ -184,7 +184,7 @@ pub async fn spawn(kind: BridgeKind, extra_jars: &[String]) -> DbResult<Bridge> 
             })?);
             let java = clean_path(java_exe().ok_or_else(|| {
                 AppError::General(
-                    "未找到 Java 运行时（JRE 17+）；请安装 Java 并配置 JAVA_HOME 或 PATH".into(),
+                    "未找到 Java 运行时（JRE 8+）；请安装 Java 并配置 JAVA_HOME 或 PATH".into(),
                 )
             })?);
             let sep = if cfg!(windows) { ";" } else { ":" };

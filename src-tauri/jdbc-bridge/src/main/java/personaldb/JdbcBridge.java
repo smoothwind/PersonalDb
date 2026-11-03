@@ -32,6 +32,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -51,7 +52,13 @@ public final class JdbcBridge {
 
     private void run() throws Exception {
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-        PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+        // Java 8：PrintStream 仅支持编码名字符串构造器（Charset 版本为 Java 10+）
+        PrintStream out;
+        try {
+            out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new IllegalStateException("JVM 缺少 UTF-8 支持", e);
+        }
         String line;
         String cmd = null;
         while ((line = in.readLine()) != null) {
@@ -190,7 +197,7 @@ public final class JdbcBridge {
             props.setProperty("password", password);
         }
         if (req.has("props") && req.get("props").isJsonObject()) {
-            for (var e : req.getAsJsonObject("props").entrySet()) {
+            for (Map.Entry<String, JsonElement> e : req.getAsJsonObject("props").entrySet()) {
                 props.setProperty(e.getKey(), e.getValue().getAsString());
             }
         }
@@ -419,7 +426,8 @@ public final class JdbcBridge {
         ResultSet rs = functions
                 ? md.getFunctions(catalog, schema, pattern)
                 : md.getProcedures(catalog, schema, pattern);
-        try (rs) {
+        // Java 8：try-with-resources 必须为声明形式，不能直接引用已有变量（Java 9+ 语法）
+        try (ResultSet res = rs) {
             boolean fn = functions;
             while (rs.next()) {
                 rows.add(new String[]{
