@@ -22,7 +22,7 @@
 - **SQL 编辑器**：CodeMirror 6、方言高亮、**自动补全**（同 schema 表/列 + 注释、按列类型图标）、**自定义美化器**（对齐 PL/SQL Developer Beautifier 规则）、快捷指令、执行范围（全部/选中/当前行）、保存/加载 SQL 文件、**Ctrl+F 搜索面板**、**Ctrl+滚轮字号缩放**
 - **结果集**：分页续拉、**大结果自动虚拟滚动（>600 行）**、**多语句多结果集切换**、筛选（关键字/**列值筛选**）/排序/全局查找、**统计行**、**列宽持久化**、显示列（**拖拽排序**/移首尾/还原）、**粘贴建行**、URL 链接化、长文/JSON 悬浮卡、行高固定（tooltip 展示长文本）、多选复制、导出（Excel/SQL INSERT/CSV/TXT/**JSON** + 值转换规则）、结果编辑（增删改 + 预览 + 撤销/重做 + 高危确认 + 事务提交）、记录视图、单元格详情
 - **查询历史**：SQLite 本地持久化（500 条），搜索、**仅当前连接**、单击回填、**双击立即执行**
-- **SQL 模板**：应用内全部查询 SQL（分页包装/预览/对象目录/源码查询/执行计划/会话与锁/驱动层）可在设置中**按数据库种类自定义**（方言覆盖 → 通用默认 → 内置兜底，保存即时生效；分页/预览别名字母开头，杜绝跨方言串扰）
+- **SQL 模板**：应用内全部查询 SQL（分页包装/预览/对象目录/源码查询/执行计划/会话与锁/驱动层）可在设置中**按数据库种类自定义**（方言覆盖 → 通用默认 → 内置兜底，保存即时生效；分页/预览别名字母开头，杜绝跨方言串扰）。设置页按 **8 个功能组折叠展示**，工具栏两行（搜索 + 覆盖状态分段 / 种类 chips 多选 + 动作组），支持**筛选反馈条与一键清除**、条目用途标注、单条/全部恢复；覆盖表存本地 `sqltemplates.json`
 - **命令面板**：Ctrl+K 全局搜索命令/连接/最近 SQL
 - **事务**：自动 / 手动提交（主窗体工具栏；OB Oracle 非 Send 连接自动提交）
 - **布局与外观**：页签栏位置（顶部/左侧/右侧，竖向可拖拽排序）、**分屏（左右/上下）**、面板拖拽、可调字体与行高、主题（浅/深）、国际化（中/英）
@@ -126,9 +126,9 @@ cargo check --no-default-features   # src-tauri 目录（仍可使用内置驱�
 ```
 src/                        # Vue 3 前端
 ├── api/db.ts               # Tauri invoke 封装
-├── stores/                 # connections / tabs / history(SQLite 后端化) / preferences / workspaces…
+├── stores/                 # connections / tabs / history(SQLite 后端化) / preferences / sqlTemplates / workspaces…
 ├── types/db.ts             # 与 Rust 端对齐的类型定义
-├── utils/                  # icons(自绘 SVG) / objectIcons / plsqlBeautifier / clipboard / notify…
+├── utils/                  # icons(自绘 SVG) / objectIcons / sqlTemplates(解析链) / plsqlBeautifier / clipboard / notify…
 ├── tours/                  # driver.js 漫游指导脚本
 └── components/             # QueryTabPane / SessionPane / TableInspectorPane / CommandPalette / HistoryPanel…
 
@@ -147,6 +147,7 @@ src-tauri/src/              # Rust 后端
 │   ├── dml.rs / export.rs  # 结果集编辑 DML / 导出引擎
 │   ├── pool.rs             # 驱动工厂 + 会话管理器 + 保活
 │   ├── registry.rs         # 数据库类型注册表（能力下发）
+│   ├── templates.rs        # SQL 模板注册表（方言覆盖→通用默认→内置兜底，group/usage 元数据）
 │   └── types.rs            # 连接配置 / 结果集等通用类型
 ├── secrets.rs              # 密码存 Windows 凭据管理器（keyring）
 ├── vault.rs                # 配置导出加密（AES-256-GCM + PBKDF2）
@@ -177,6 +178,7 @@ src-tauri/jdbc-bridge/      # Java sidecar（OceanBase Connector/J）：OceanBas
 | --------- | -------------------------------- | -------------------------------- |
 | 连接配置  | `{安装目录}\data\connections\` | connections.json、groups.json    |
 | 快捷指令  | `{安装目录}\data\snippets\`    | snippets.json                    |
+| SQL 模板  | `{安装目录}\data\sqltemplates\` | sqltemplates.json                |
 | 工作区    | `{安装目录}\data\workspaces\`  | workspaces.json                  |
 | JDBC 驱动 | `{安装目录}\data\drivers\`     | drivers.json                     |
 | 日志      | `{安装目录}\data\logs\`        | personaldb.log（512KB 自动轮转） |
