@@ -181,8 +181,12 @@ pub fn builtin_preview(kind: &str) -> &'static str {
 pub struct TemplateSpecEntry {
     /// 模板 key（如 `paged.oracle` / `catalog.mysql.tables`）
     pub key: String,
-    /// 分组 key（前端 i18n：`tplCat.<category>`）
+    /// 细分类别 key（保留向后兼容；前端分组以 `group` 为准）
     pub category: String,
+    /// 功能组 key（前端 i18n：`tplGroup.<group>`；折叠单元）
+    pub group: String,
+    /// 用途/使用组件 i18n key（前端 `tplUsage.<usage>`，如 `tplUsage.paged`）
+    pub usage: String,
     /// 数据库种类 key（"" = 通用默认条目）
     pub dialect: String,
     /// 占位符名（`{sql}` 等，不含花括号）
@@ -193,6 +197,76 @@ pub struct TemplateSpecEntry {
     pub override_value: Option<String>,
 }
 
+/// 细分类别 → 功能组（折叠单元）映射
+fn group_of(category: &str) -> &'static str {
+    match category {
+        "paged" => "paging",
+        "preview" | "previewRows" => "preview",
+        // 分区表标识属于连接树 → 并入对象目录组
+        "catalog" | "catalogCount" | "partitioned" => "catalog",
+        "objectDdl" => "source",
+        "explain" => "plan",
+        "sessions" | "locks" => "session",
+        "snapshot" => "autocomplete",
+        "driver" => "meta",
+        _ => "other",
+    }
+}
+
+/// key → 用途 i18n key（`tplUsage.<leaf>`）；说明该 SQL 在哪个组件使用
+fn usage_of(key: &str) -> &'static str {
+    // 顺序敏感：`catalogCount.` 需先于 `catalog.`；驱动层 `tables.` 等不被 `catalog.` 误吞
+    if key.starts_with("paged.") {
+        return "tplUsage.paged";
+    }
+    if key.starts_with("previewRows.") {
+        return "tplUsage.previewRows";
+    }
+    if key.starts_with("preview.") {
+        return "tplUsage.preview";
+    }
+    if key.starts_with("catalogCount.") {
+        return "tplUsage.catalogCount";
+    }
+    if key.starts_with("catalog.") {
+        return "tplUsage.catalog";
+    }
+    if key.starts_with("objectDdl.") {
+        return "tplUsage.objectDdl";
+    }
+    if key.starts_with("explain.") {
+        return "tplUsage.explain";
+    }
+    if key.starts_with("sessionsFallback.") || key.starts_with("sessions.") {
+        return "tplUsage.sessions";
+    }
+    if key.starts_with("locks.") {
+        return "tplUsage.locks";
+    }
+    if key.starts_with("snapshot.") {
+        return "tplUsage.snapshot";
+    }
+    if key.starts_with("partitioned.") {
+        return "tplUsage.partitioned";
+    }
+    if key.starts_with("databases.") {
+        return "tplUsage.driverDatabases";
+    }
+    if key.starts_with("tables.") {
+        return "tplUsage.driverTables";
+    }
+    if key.starts_with("columns.") {
+        return "tplUsage.driverColumns";
+    }
+    if key.starts_with("indexes.") {
+        return "tplUsage.driverIndexes";
+    }
+    if key.starts_with("routines.") {
+        return "tplUsage.driverRoutines";
+    }
+    ""
+}
+
 fn entry(
     key: String,
     category: &str,
@@ -201,10 +275,14 @@ fn entry(
     builtin: String,
     overrides: &HashMap<String, String>,
 ) -> TemplateSpecEntry {
+    let override_value = overrides.get(&key).filter(|s| !s.trim().is_empty()).cloned();
+    let usage = usage_of(key.as_str()).to_string();
     TemplateSpecEntry {
-        override_value: overrides.get(&key).filter(|s| !s.trim().is_empty()).cloned(),
+        override_value,
         key,
         category: category.to_string(),
+        group: group_of(category).to_string(),
+        usage,
         dialect: dialect.to_string(),
         placeholders: placeholders.iter().map(|s| s.to_string()).collect(),
         builtin,
@@ -892,11 +970,21 @@ mod tests {
             .find(|e| e.key == "paged.oracle")
             .expect("spec 必含 paged.oracle");
         assert_eq!(oracle.category, "paged");
+        assert_eq!(oracle.group, "paging");
+        assert!(oracle.usage.starts_with("tplUsage."));
         assert!(oracle.builtin.contains("ROWNUM"));
         assert!(oracle.placeholders.contains(&"sql".to_string()));
         assert!(entries.iter().any(|e| e.key == "paged.default"));
         assert!(entries.iter().any(|e| e.key == "preview.oracle"));
         assert!(entries.iter().any(|e| e.key == "previewRows.jdbc"));
+        // 分组归属：预览族同组、驱动层归 meta、分区归 catalog
+        let preview = entries.iter().find(|e| e.key == "preview.mysql").unwrap();
+        let preview_rows = entries.iter().find(|e| e.key == "previewRows.mysql").unwrap();
+        assert_eq!(preview.group, preview_rows.group);
+        let driver = entries.iter().find(|e| e.key == "tables.mysql").unwrap();
+        assert_eq!(driver.group, "meta");
+        let part = entries.iter().find(|e| e.key == "partitioned.oracle").unwrap();
+        assert_eq!(part.group, "catalog");
 
         let resolved = resolved();
         let tpl = resolved

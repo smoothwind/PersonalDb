@@ -353,8 +353,12 @@ export const storageOpenDir = (key: string) =>
 export interface SqlTemplateSpec {
   /** 模板 key（如 `paged.oracle` / `catalog.mysql.tables`） */
   key: string
-  /** 分组 key（i18n：`tplCat.<category>`） */
+  /** 细分类别 key（保留兼容；前端分组以 group 为准） */
   category: string
+  /** 功能组 key（i18n：`tplGroup.<group>`；折叠单元） */
+  group: string
+  /** 用途/使用组件 i18n key（`tplUsage.<usage>`） */
+  usage: string
   /** 数据库种类 key（'' = 通用默认） */
   dialect: string
   /** 占位符名（不含花括号） */
