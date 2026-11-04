@@ -1,5 +1,5 @@
 <template>
-  <div class="query-pane">
+  <div ref="paneEl" class="query-pane">
     <div class="query-toolbar" data-tour="query-toolbar">
       <el-select
         :model-value="tab.database"
@@ -120,6 +120,7 @@
         :snippets="snippetMap"
         :connection-id="tab.connectionId"
         :database="tab.database"
+        fill
         @run="run"
         @format="doFormat"
       />
@@ -908,11 +909,19 @@ function onVirtualRowCopy(rowIndex: number): void {
   void copyText(cells.map((v) => cellToText(v)).join('\t'))
   ElMessage.success(t('result.rowCopied'))
 }
-/** 编辑器区域高度（可上下拖拽，localStorage 持久化） */
+/** 编辑器区域高度（可上下拖拽，localStorage 持久化；fill 模式下编辑器精确填满本区域） */
 const EDITOR_H_KEY = 'personaldb.editorHeight'
-const editorWrapHeight = ref(
-  Math.min(700, Math.max(80, Number(localStorage.getItem(EDITOR_H_KEY)) || 220)),
-)
+/** 结果区最小保留高度（工具栏 + 若干行），防编辑区吃掉整个结果区 */
+const RESULT_MIN_H = 280
+const paneEl = ref<HTMLElement | null>(null)
+
+/** 按当前窗格实际可用空间收敛高度（上限 700；老持久化值/大窗拖出的值在小窗不生效） */
+function clampEditorHeight(h: number): number {
+  const avail = (paneEl.value?.clientHeight ?? window.innerHeight) - RESULT_MIN_H
+  return Math.max(80, Math.min(h, 700, avail))
+}
+
+const editorWrapHeight = ref(clampEditorHeight(Number(localStorage.getItem(EDITOR_H_KEY)) || 220))
 
 function startEditorDrag(e: MouseEvent): void {
   e.preventDefault()
@@ -920,7 +929,7 @@ function startEditorDrag(e: MouseEvent): void {
   const startH = editorWrapHeight.value
   startWindowDrag(
     (ev) => {
-      editorWrapHeight.value = Math.min(700, Math.max(80, startH + (ev.clientY - startY)))
+      editorWrapHeight.value = clampEditorHeight(startH + (ev.clientY - startY))
     },
     () => localStorage.setItem(EDITOR_H_KEY, String(editorWrapHeight.value)),
   )
@@ -2214,6 +2223,8 @@ const editModeLabel = computed(() =>
 .editor-wrap {
   overflow: hidden;
   flex-shrink: 0;
+  /* 兜底：窗口 resize 后持久化值偏大时仍给结果区保底 280px（拖拽/初始化已动态 clamp） */
+  max-height: calc(100% - 280px);
 }
 
 .splitter-h {

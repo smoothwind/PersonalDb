@@ -690,6 +690,9 @@ defineExpose({
 .sql-editor-host.is-fill {
   height: 100%;
   max-height: none;
+  /* 覆盖共享的 min-height:120——fill 时高度全权由宿主容器决定；否则宿主压缩到 <120px 时
+     编辑器溢出容器被裁切，且内部滚动条够不到被裁掉的底部 SQL（不可达盲区） */
+  min-height: 0;
   border-bottom: none;
 }
 
