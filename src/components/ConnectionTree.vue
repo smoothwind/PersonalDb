@@ -1300,7 +1300,7 @@ async function onMenuCopyDdl(): Promise<void> {
 async function copyWithToast(text: string, successKey: string, params?: Record<string, unknown>): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
-    ElMessage.success(t(successKey, params))
+    ElMessage.success(params ? t(successKey, params) : t(successKey))
   } catch (e) {
     ElMessage.error(String(e))
   }
@@ -1326,9 +1326,9 @@ function tableMenuContext():
 /** 惰性取列名（菜单打开零查询，点击动作后才 describe；失败 toast 后返回 null） */
 async function fetchColumnsOrToast(ctx: NonNullable<ReturnType<typeof tableMenuContext>>): Promise<string[] | null> {
   try {
-    const meta = await dbDescribeTable(ctx.sessionId, ctx.database, ctx.table)
-    if (!meta.columns.length) throw new Error('no columns')
-    return meta.columns.map((c) => c.name)
+    const cols = await dbDescribeTable(ctx.sessionId, ctx.database, ctx.table)
+    if (!cols.length) throw new Error('no columns')
+    return cols.map((c) => c.name)
   } catch (e) {
     ElMessage.error(t('tree.colsFetchFailed'))
     return null
