@@ -176,7 +176,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Connection,
-  CopyDocument,
   Delete,
   Document,
   Download,
@@ -203,6 +202,7 @@ import { dispatchCommand } from '../utils/commands'
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '../stores/connections'
 import { useTabsStore } from '../stores/tabs'
+import { usePreferencesStore } from '../stores/preferences'
 import {
   dbDescribeTable,
   dbFetchTableDdl,
@@ -212,6 +212,8 @@ import {
   dbTestConnection,
 } from '../api/db'
 import { buildInsertSql, buildSelectSql, formatColumns, type ColumnFormat } from '../utils/sqlGen'
+import { cleanDdl } from '../utils/ddlClean'
+import { convertOutsideLiterals } from '../utils/sqlCase'
 import type { ConnectionConfig, ConnectionGroup, DbKind, DbObjectType } from '../types/db'
 
 const { t } = useI18n()
@@ -258,6 +260,7 @@ const emit = defineEmits<{
 
 const connStore = useConnectionStore()
 const tabsStore = useTabsStore()
+const prefsStore = usePreferencesStore()
 
 const treeKey = ref(0)
 const treeRef = ref()
@@ -347,22 +350,16 @@ const menuItems = computed<CtxMenuItem[]>(() => {
           disabled: tgt.typeLabel === 'VIEW',
           title: tgt.typeLabel === 'VIEW' ? t('tree.viewInsertDisabled') : undefined,
         },
-      ],
-    })
-    push('tableMeta', t('tree.viewStructure'), Grid)
-    push('tableSource', t('tree.viewSource'), Document)
-    push('copyDdl', t('tree.copyDdl'), CopyDocument)
-    items.push({
-      key: 'copyColumns',
-      label: t('tree.copyColumns'),
-      icon: CopyDocument,
-      children: [
+        { key: 'genDdl', label: t('tree.genDdl') },
+        { key: 'genSep', label: '', sep: true },
         { key: 'copyColsPlain', label: t('tree.copyColsPlain') },
         { key: 'copyColsQuoted', label: t('tree.copyColsQuoted') },
         { key: 'copyColsAliased', label: t('tree.copyColsAliased') },
         { key: 'copyColsLines', label: t('tree.copyColsLines') },
       ],
     })
+    push('tableMeta', t('tree.viewStructure'), Grid)
+    push('tableSource', t('tree.viewSource'), Document)
     sep()
     push('export', t('tree.exportData'), Download)
   } else if (tgt.nodeType === 'db') {
@@ -431,8 +428,8 @@ function onMenuSelect(key: string): void {
     case 'tableSource':
       onMenuTableSource()
       break
-    case 'copyDdl':
-      void onMenuCopyDdl()
+    case 'genDdl':
+      void onMenuGenDdl()
       break
     case 'genSelect':
       void onMenuGenSql('select')
@@ -1281,22 +1278,27 @@ function onMenuTableSource(): void {
   void dispatchCommand('table-source', tab.id)
 }
 
-/** 表节点：复制 DDL 到剪贴板 */
-async function onMenuCopyDdl(): Promise<void> {
-  const target = menu.target
+/** 生成 CREATE 语句 → 按偏好清洗（去限定符/存储）+ 统一大小写（跳过字符串字面值）→ 复制（SPEC-TREE-7） */
+async function onMenuGenDdl(): Promise<void> {
+  const ctx = tableMenuContext()
   hideMenu()
-  if (target?.nodeType !== 'table') return
-  const session = connStore.sessionOf(target.connectionId)
-  if (!session) return
+  if (!ctx) return
   try {
-    const ddl = await dbFetchTableDdl(session.sessionId, target.database || null, target.label)
+    let ddl = await dbFetchTableDdl(ctx.sessionId, ctx.database, ctx.table)
+    const b = prefsStore.sqlGen
+    if (b.stripQualifier || b.stripStorage) {
+      ddl = cleanDdl(ddl, ctx.kind, { stripQualifier: b.stripQualifier, stripStorage: b.stripStorage })
+    }
+    if (b.identifierCase !== 'original') {
+      ddl = convertOutsideLiterals(ddl, b.identifierCase)
+    }
     await copyWithToast(ddl, 'tree.ddlCopied')
   } catch (e) {
     ElMessage.error(String(e))
   }
 }
 
-/** 复制文本到剪贴板并提示（copyDdl / 生成 SQL / 复制列名共用惯例，SPEC-TREE-7） */
+/** 复制文本到剪贴板并提示（生成 SQL / 复制列名 / CREATE 共用惯例，SPEC-TREE-7） */
 async function copyWithToast(text: string, successKey: string, params?: Record<string, unknown>): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
@@ -1342,7 +1344,7 @@ async function onMenuGenSql(type: 'select' | 'insert'): Promise<void> {
   if (!ctx || (type === 'insert' && ctx.isView)) return
   const columns = await fetchColumnsOrToast(ctx)
   if (!columns) return
-  const opts = { table: ctx.table, database: ctx.database, columns }
+  const opts = { table: ctx.table, database: ctx.database, columns, behavior: prefsStore.sqlGen }
   await copyWithToast(
     type === 'select' ? buildSelectSql(ctx.kind, opts) : buildInsertSql(ctx.kind, opts),
     type === 'select' ? 'tree.selectCopied' : 'tree.insertCopied',
@@ -1365,7 +1367,7 @@ async function onMenuCopyColumns(key: string): Promise<void> {
   if (!ctx || !variant) return
   const columns = await fetchColumnsOrToast(ctx)
   if (!columns) return
-  await copyWithToast(formatColumns(ctx.kind, columns, variant), 'tree.colsCopied', { n: columns.length })
+  await copyWithToast(formatColumns(ctx.kind, columns, variant, prefsStore.sqlGen), 'tree.colsCopied', { n: columns.length })
 }
 
 /** 库/表文件夹：新建表模板 */

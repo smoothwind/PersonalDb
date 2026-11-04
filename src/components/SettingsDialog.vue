@@ -383,6 +383,36 @@
               <span class="field-hint">{{ t('settings.queryTimeoutHint') }}</span>
             </el-form-item>
           </el-form>
+
+          <!-- SQL 生成行为（SPEC-TREE-7：生成 SELECT/INSERT/CREATE 与复制列名共用） -->
+          <div class="pref-section">{{ t('settings.sqlGenSection') }}</div>
+          <el-form label-width="120px" size="small">
+            <el-form-item :label="t('settings.sqlGenStripQualifier')">
+              <el-switch
+                :model-value="prefs.sqlGen.stripQualifier"
+                @update:model-value="(v: string | number | boolean) => prefs.updateSqlGen({ stripQualifier: Boolean(v) })"
+              />
+              <div class="hint-line">{{ t('settings.sqlGenStripQualifierHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('settings.sqlGenIdentifierCase')">
+              <el-radio-group
+                :model-value="prefs.sqlGen.identifierCase"
+                @update:model-value="(v: string | number | boolean | undefined) => prefs.updateSqlGen({ identifierCase: (v as 'original' | 'upper' | 'lower') ?? 'original' })"
+              >
+                <el-radio-button value="original">{{ t('settings.sqlGenCaseOriginal') }}</el-radio-button>
+                <el-radio-button value="upper">{{ t('settings.sqlGenCaseUpper') }}</el-radio-button>
+                <el-radio-button value="lower">{{ t('settings.sqlGenCaseLower') }}</el-radio-button>
+              </el-radio-group>
+              <div class="hint-line">{{ t('settings.sqlGenCaseHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('settings.sqlGenStripStorage')">
+              <el-switch
+                :model-value="prefs.sqlGen.stripStorage"
+                @update:model-value="(v: string | number | boolean) => prefs.updateSqlGen({ stripStorage: Boolean(v) })"
+              />
+              <div class="hint-line">{{ t('settings.sqlGenStripStorageHint') }}</div>
+            </el-form-item>
+          </el-form>
         </template>
 
         <!-- 结果集 -->

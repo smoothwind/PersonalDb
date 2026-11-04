@@ -159,3 +159,36 @@ describe('formatColumns 复制列名 4 预设', () => {
     expect(formatColumns('mysql', cols, 'lines')).toBe('a\nb\nc')
   })
 })
+
+describe('SqlGenBehavior 行为偏好（SQL 生成设置，SPEC-TREE-7）', () => {
+  const cols = ['a', 'b', 'c']
+  it('stripQualifier：生成语句不带库/模式前缀', () => {
+    expect(
+      buildSelectSql('mysql', { table: 'user', database: 'mydb', columns: ['id'], behavior: { stripQualifier: true } }),
+    ).toBe('SELECT `id` FROM `user`;')
+    expect(
+      buildInsertSql('postgresql', { table: 'user', database: 'mydb', columns: ['id'], behavior: { stripQualifier: true } }),
+    ).toBe('INSERT INTO "user" ("id") VALUES (?);')
+  })
+
+  it('identifierCase upper / lower（表名/列名/库名统一转换，关键字不受影响）', () => {
+    expect(
+      buildSelectSql('mysql', {
+        table: 'user', database: 'mydb', columns: ['id', 'name'],
+        behavior: { identifierCase: 'upper' },
+      }),
+    ).toBe('SELECT `ID`, `NAME` FROM `MYDB`.`USER`;')
+    expect(
+      buildSelectSql('oracle', { table: 'User', columns: ['Id'], behavior: { identifierCase: 'lower' } }),
+    ).toBe('SELECT "id" FROM "user"')
+    expect(
+      buildInsertSql('oracle', { table: 'T1', columns: ['A', 'B'], behavior: { identifierCase: 'lower' } }),
+    ).toBe('INSERT INTO "t1" ("a", "b") VALUES (:1, :2)')
+  })
+
+  it('formatColumns 接受行为偏好', () => {
+    expect(formatColumns('mysql', cols, 'plain', { identifierCase: 'upper' })).toBe('A, B, C')
+    expect(formatColumns('oracle', ['a'], 'quoted', { identifierCase: 'lower' })).toBe('"a"')
+    expect(formatColumns('mysql', cols, 'aliased', { identifierCase: 'upper' })).toBe('t.A, t.B, t.C')
+  })
+})

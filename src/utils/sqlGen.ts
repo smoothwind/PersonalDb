@@ -8,6 +8,9 @@ import type { DbKind } from '../types/db'
  * - INSERT 占位符：oracle / oceanbase-oracle = :1,:2…；其余 = ?
  * - 库限定：mysql / oceanbase = `db`.`tbl`；postgresql / gaussdb = "db"."tbl"；其余无（schema/单库上下文）
  * - 结尾分号：oracle 系不加分号，其余加分号
+ *
+ * 行为偏好（首选项「SQL 生成」SqlGenBehavior）：stripQualifier 去库/模式前缀；
+ * identifierCase 统一标识符大小写（关键字不受影响）。
  */
 
 /** Oracle 系（含 OB Oracle 模式）共同规则：无库前缀、:N 占位符、无分号 */
@@ -26,6 +29,20 @@ export function quoteIdent(kind: DbKind, name: string): string {
   return q + name.split(q).join(q + q) + q
 }
 
+/** 生成行为偏好（首选项「SQL 生成」，缺省 = 带限定符 + 保持原样） */
+export interface SqlGenBehavior {
+  /** 去除库/模式限定前缀 */
+  stripQualifier?: boolean
+  /** 标识符大小写 */
+  identifierCase?: 'original' | 'upper' | 'lower'
+}
+
+/** 按行为偏好转换标识符大小写（关键字不受影响） */
+function applyCase(name: string, behavior?: SqlGenBehavior): string {
+  const mode = behavior?.identifierCase ?? 'original'
+  return mode === 'upper' ? name.toUpperCase() : mode === 'lower' ? name.toLowerCase() : name
+}
+
 /** INSERT VALUES 占位符列表 */
 function placeholders(kind: DbKind, n: number): string[] {
   if (isOracleFamily(kind)) {
@@ -34,11 +51,12 @@ function placeholders(kind: DbKind, n: number): string[] {
   return Array.from({ length: n }, () => '?')
 }
 
-/** 库限定表名（Oracle 系走 schema 上下文、SQLite/JDBC 单库，不加前缀） */
-function tableRef(kind: DbKind, table: string, database: string | null): string {
+/** 库限定表名（Oracle 系走 schema 上下文、SQLite/JDBC 单库，不加前缀；stripQualifier 时同样省略） */
+function tableRef(kind: DbKind, table: string, database: string | null, behavior?: SqlGenBehavior): string {
   const ref = quoteIdent(kind, table)
-  if (!database || isOracleFamily(kind) || kind === 'sqlite' || kind === 'jdbc') return ref
-  return `${quoteIdent(kind, database)}.${ref}`
+  if (!database || behavior?.stripQualifier) return ref
+  if (isOracleFamily(kind) || kind === 'sqlite' || kind === 'jdbc') return ref
+  return `${quoteIdent(kind, applyCase(database, behavior))}.${ref}`
 }
 
 /** 列数超过该值时列清单逐行缩进 */
@@ -54,25 +72,28 @@ export interface GenSqlOptions {
   /** 库名（Oracle 系 / SQLite / 通用 JDBC 忽略） */
   database?: string | null
   columns: string[]
+  behavior?: SqlGenBehavior
 }
 
 /** 生成 SELECT 列清单语句（区别于「查询数据」的 SELECT * 预览） */
 export function buildSelectSql(kind: DbKind, opts: GenSqlOptions): string {
-  const cols = opts.columns.map((c) => quoteIdent(kind, c))
+  const b = opts.behavior
+  const cols = opts.columns.map((c) => quoteIdent(kind, applyCase(c, b)))
   const multiline = cols.length > MULTILINE_THRESHOLD
   const semi = isOracleFamily(kind) ? '' : ';'
-  const ref = tableRef(kind, opts.table, opts.database ?? null)
+  const ref = tableRef(kind, applyCase(opts.table, b), opts.database ?? null, b)
   if (!multiline) return `SELECT ${cols.join(', ')} FROM ${ref}${semi}`
   return `SELECT\n${renderList(cols, true)}\nFROM ${ref}${semi}`
 }
 
 /** 生成 INSERT 模板（VALUES 用方言占位符，等待逐值填写） */
 export function buildInsertSql(kind: DbKind, opts: GenSqlOptions): string {
-  const cols = opts.columns.map((c) => quoteIdent(kind, c))
+  const b = opts.behavior
+  const cols = opts.columns.map((c) => quoteIdent(kind, applyCase(c, b)))
   const vals = placeholders(kind, cols.length)
   const multiline = cols.length > MULTILINE_THRESHOLD
   const semi = isOracleFamily(kind) ? '' : ';'
-  const ref = tableRef(kind, opts.table, opts.database ?? null)
+  const ref = tableRef(kind, applyCase(opts.table, b), opts.database ?? null, b)
   if (!multiline) {
     return `INSERT INTO ${ref} (${cols.join(', ')}) VALUES (${vals.join(', ')})${semi}`
   }
@@ -83,16 +104,22 @@ export function buildInsertSql(kind: DbKind, opts: GenSqlOptions): string {
 export type ColumnFormat = 'plain' | 'quoted' | 'aliased' | 'lines'
 
 /** 按预设格式化列名清单（SPEC-TREE-7：不开放全组合，仅 4 个常用预设） */
-export function formatColumns(kind: DbKind, columns: string[], variant: ColumnFormat): string {
+export function formatColumns(
+  kind: DbKind,
+  columns: string[],
+  variant: ColumnFormat,
+  behavior?: SqlGenBehavior,
+): string {
+  const cased = columns.map((c) => applyCase(c, behavior))
   switch (variant) {
     case 'plain':
-      return columns.join(', ')
+      return cased.join(', ')
     case 'quoted':
-      return columns.map((c) => quoteIdent(kind, c)).join(', ')
+      return cased.map((c) => quoteIdent(kind, c)).join(', ')
     case 'aliased':
       // JOIN / UPDATE 场景：统一 t. 前缀（别名本身不引用）
-      return columns.map((c) => `t.${c}`).join(', ')
+      return cased.map((c) => `t.${c}`).join(', ')
     case 'lines':
-      return columns.join('\n')
+      return cased.join('\n')
   }
 }

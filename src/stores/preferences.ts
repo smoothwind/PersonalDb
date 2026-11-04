@@ -78,6 +78,25 @@ export function defaultDangerPrefs(): DangerPrefs {
   }
 }
 
+/** 生成 SQL 行为偏好（SPEC-TREE-7：生成 SELECT/INSERT/CREATE 与复制列名共用） */
+export interface SqlGenPrefs {
+  /** 去除库/模式限定符（生成语句不带前缀；CREATE 去属主前缀并去标识符引号） */
+  stripQualifier: boolean
+  /** 标识符大小写（生成语句、列名与 CREATE 文本；关键字含义不受影响） */
+  identifierCase: 'original' | 'upper' | 'lower'
+  /** CREATE 去除存储相关子句（STORAGE/TABLESPACE/ENGINE 等） */
+  stripStorage: boolean
+}
+
+/** 兜底默认（供 loadPrefs 合并旧数据；与源码查看器复选框现状一致全关） */
+export function defaultSqlGenPrefs(): SqlGenPrefs {
+  return {
+    stripQualifier: false,
+    identifierCase: 'original',
+    stripStorage: false,
+  }
+}
+
 /** 数据格式展示偏好（单元格值的呈现方式） */
 export interface DataFormatPrefs {
   /** 日期时间显示格式：原始 / 本地 / ISO 8601 */
@@ -251,6 +270,7 @@ const FORMAT_KEY = 'personaldb.format'
 const SHORTCUT_KEY = 'personaldb.shortcuts'
 const UPDATE_KEY = 'personaldb.update'
 const DANGER_KEY = 'personaldb.danger'
+const SQLGEN_KEY = 'personaldb.sqlgen'
 
 function initialTheme(): ThemeMode {
   const saved = localStorage.getItem(THEME_KEY)
@@ -283,6 +303,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }),
   )
   const danger = reactive<DangerPrefs>(loadPrefs<DangerPrefs>(DANGER_KEY, defaultDangerPrefs()))
+  const sqlGen = reactive<SqlGenPrefs>(loadPrefs<SqlGenPrefs>(SQLGEN_KEY, defaultSqlGenPrefs()))
   const result = reactive<ResultPrefs>(
     loadPrefs<ResultPrefs>(RESULT_KEY, {
       rowHeight: 'compact',
@@ -414,6 +435,11 @@ export const usePreferencesStore = defineStore('preferences', () => {
     localStorage.setItem(DANGER_KEY, JSON.stringify({ ...danger }))
   }
 
+  function updateSqlGen(patch: Partial<SqlGenPrefs>): void {
+    Object.assign(sqlGen, patch)
+    localStorage.setItem(SQLGEN_KEY, JSON.stringify({ ...sqlGen }))
+  }
+
   /** 记录「不再提示该版本」 */
   function skipVersion(version: string): void {
     updateUpdatePrefs({ skippedVersion: version })
@@ -463,6 +489,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     update,
     shortcuts,
     danger,
+    sqlGen,
     setTheme,
     toggleTheme,
     changeLocale,
@@ -476,6 +503,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     updateFormat,
     updateUpdatePrefs,
     updateDanger,
+    updateSqlGen,
     skipVersion,
     clearSkippedVersion,
     shortcutOf,

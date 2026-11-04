@@ -37,7 +37,7 @@ export function stripQualifier(s: string): string {
 export function stripStorage(s: string, kind: DbKind): string {
   let out = s
   out = out.replace(/STORAGE\s*\([^)]*\)/gis, '')
-  out = out.replace(/\bTABLESPACE\s+[^\s,;")]+/gi, '')
+  out = out.replace(/\bTABLESPACE\s+[^\s,;)]+/gi, '')
   out = out.replace(/\b(?:PCTFREE|PCTUSED|INITRANS|MAXTRANS|BUFFER_POOL|FILLFACTOR)\s+\S+/gi, '')
   out = out.replace(/\bSEGMENT\s+CREATION\s+(?:IMMEDIATE|DEFERRED)/gi, '')
   out = out.replace(
