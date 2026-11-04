@@ -235,6 +235,10 @@ impl Bridge {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // Windows：java / oracle-bridge 均为控制台子系统程序，GUI 进程 spawn 缺省会新建
+        // 前台控制台窗（与连接等长驻留）；CREATE_NO_WINDOW 抑制之
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         let mut child = cmd
             .spawn()
             .map_err(|e| AppError::General(format!("启动数据库桥接进程失败：{e}")))?;

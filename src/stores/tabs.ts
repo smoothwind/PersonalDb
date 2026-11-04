@@ -534,7 +534,10 @@ export const useTabsStore = defineStore('tabs', () => {
       tab.hasMore = rows.rows.length >= pageSize && newTotal < prefs.maxTotalRows
       logger.debug(`[sql] loadMore +${rows.rows.length} total=${newTotal}`)
     } catch (e) {
-      tab.hasMore = false
+      // 连接类失败保留 hasMore（再次触底可重试）；SQL 语义类错误重试必败，关闭续拉。
+      // 失败必须可见：此前静默置 false，曾把「分页别名 ORA-00911」藏成「永远只有一页」
+      tab.hasMore = looksLikeConnError(String(e))
+      ElMessage.error(tt('logs.pagedFailed'))
       logger.error(`[sql] loadMore failed: ${String(e)}`)
       logStore.push({
         level: 'error',
