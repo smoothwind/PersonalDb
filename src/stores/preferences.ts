@@ -9,6 +9,8 @@ export type ThemeMode = 'light' | 'dark'
 export interface EditorPrefs {
   /** 字号 px */
   fontSize: number
+  /** 等宽字体族（空 = 默认 Consolas 栈；SQL 编辑器与源码查看器共用） */
+  fontFamily: string
   /** 自动换行 */
   wrap: boolean
   /** 显示行号 */
@@ -246,6 +248,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const editor = reactive<EditorPrefs>(
     loadPrefs<EditorPrefs>(EDITOR_KEY, {
       fontSize: 14,
+      fontFamily: '',
       wrap: false,
       lineNumbers: true,
       tabSize: 2,

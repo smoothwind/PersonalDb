@@ -45,32 +45,79 @@
                 <el-radio-button value="en">{{ t('settings.languageEn') }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
+            <el-form-item :label="t('settings.fontPresets')">
+              <div class="preset-actions">
+                <el-button size="small" @click="prefs.updateUi({ fontSize: 12, lineHeight: 1.3 })">{{ t('settings.fontPresetCompact') }}</el-button>
+                <el-button size="small" @click="prefs.updateUi({ fontSize: 14, lineHeight: 1.5 })">{{ t('settings.fontPresetStandard') }}</el-button>
+                <el-button size="small" @click="prefs.updateUi({ fontSize: 17, lineHeight: 1.7 })">{{ t('settings.fontPresetRelaxed') }}</el-button>
+                <el-button size="small" @click="prefs.updateUi({ fontFamily: '', fontSize: 14, lineHeight: 1.5 })">{{ t('settings.fontPresetSystem') }}</el-button>
+              </div>
+              <div class="hint-line">{{ t('settings.fontPresetsHint') }}</div>
+            </el-form-item>
             <el-form-item :label="t('settings.uiFontFamily')">
-              <el-input
+              <el-select
+                class="font-select"
                 :model-value="prefs.ui.fontFamily"
                 :placeholder="t('settings.uiFontFamilyPlaceholder')"
-                @update:model-value="(v: string) => prefs.updateUi({ fontFamily: v })"
-              />
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                @update:model-value="(v: string | undefined) => prefs.updateUi({ fontFamily: v ?? '' })"
+              >
+                <el-option v-for="f in UI_FONT_OPTIONS" :key="f.value" :label="f.label" :value="f.value" />
+              </el-select>
+              <div class="hint-line">{{ t('settings.uiFontFamilyHint') }}</div>
             </el-form-item>
             <el-form-item :label="t('settings.uiFontSize')">
-              <el-input-number
-                :model-value="prefs.ui.fontSize"
-                :min="10"
-                :max="24"
-                controls-position="right"
-                @update:model-value="(v: number | undefined) => prefs.updateUi({ fontSize: v ?? 14 })"
-              />
+              <div class="slider-row">
+                <el-slider
+                  :model-value="prefs.ui.fontSize"
+                  :min="10"
+                  :max="24"
+                  :step="1"
+                  :show-tooltip="false"
+                  @update:model-value="(v: number | number[]) => prefs.updateUi({ fontSize: Array.isArray(v) ? v[0] : v })"
+                />
+                <el-input-number
+                  :model-value="prefs.ui.fontSize"
+                  :min="10"
+                  :max="24"
+                  size="small"
+                  controls-position="right"
+                  @update:model-value="(v: number | undefined) => prefs.updateUi({ fontSize: v ?? 14 })"
+                />
+              </div>
+              <div class="hint-line">{{ t('settings.uiFontSizeHint') }}</div>
             </el-form-item>
             <el-form-item :label="t('settings.uiLineHeight')">
-              <el-input-number
-                :model-value="prefs.ui.lineHeight"
-                :min="1"
-                :max="3"
-                :step="0.1"
-                :precision="1"
-                controls-position="right"
-                @update:model-value="(v: number | undefined) => prefs.updateUi({ lineHeight: v ?? 1.5 })"
-              />
+              <div class="slider-row">
+                <el-slider
+                  :model-value="prefs.ui.lineHeight"
+                  :min="1"
+                  :max="3"
+                  :step="0.1"
+                  :show-tooltip="false"
+                  @update:model-value="(v: number | number[]) => prefs.updateUi({ lineHeight: Math.round((Array.isArray(v) ? v[0] : v) * 10) / 10 })"
+                />
+                <el-input-number
+                  :model-value="prefs.ui.lineHeight"
+                  :min="1"
+                  :max="3"
+                  :step="0.1"
+                  :precision="1"
+                  size="small"
+                  controls-position="right"
+                  @update:model-value="(v: number | undefined) => prefs.updateUi({ lineHeight: v ?? 1.5 })"
+                />
+              </div>
+              <div class="hint-line">{{ t('settings.uiLineHeightHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('settings.fontPreview')">
+              <div class="font-preview">
+                <span class="fp-main">中文界面字体预览 AaBbGg 0123 「查询结果」</span>
+                <span class="fp-sub">SELECT id, name FROM users WHERE created_at > '2026-01-01';</span>
+              </div>
             </el-form-item>
             <el-form-item :label="t('settings.maxTabs')">
               <el-input-number
@@ -94,15 +141,50 @@
         <template v-else-if="active === 'editor'">
           <div class="pref-section">{{ t('settings.editorSection') }}</div>
           <el-form label-width="120px" size="small">
+            <el-form-item :label="t('settings.editorFontFamily')">
+              <el-select
+                class="font-select"
+                :model-value="prefs.editor.fontFamily"
+                :placeholder="t('settings.editorFontFamilyPlaceholder')"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                @update:model-value="(v: string | undefined) => prefs.updateEditor({ fontFamily: v ?? '' })"
+              >
+                <el-option v-for="f in MONO_FONT_OPTIONS" :key="f.value" :label="f.label" :value="f.value" />
+              </el-select>
+              <div class="hint-line">{{ t('settings.editorFontFamilyHint') }}</div>
+            </el-form-item>
             <el-form-item :label="t('settings.editorFontSize')">
-              <el-input-number
-                :model-value="prefs.editor.fontSize"
-                :min="11"
-                :max="22"
-                controls-position="right"
-                style="width: 130px"
-                @update:model-value="(v: number | undefined) => prefs.updateEditor({ fontSize: v ?? 14 })"
-              />
+              <div class="slider-row">
+                <el-slider
+                  :model-value="prefs.editor.fontSize"
+                  :min="11"
+                  :max="22"
+                  :step="1"
+                  :show-tooltip="false"
+                  @update:model-value="(v: number | number[]) => prefs.updateEditor({ fontSize: Array.isArray(v) ? v[0] : v })"
+                />
+                <el-input-number
+                  :model-value="prefs.editor.fontSize"
+                  :min="11"
+                  :max="22"
+                  size="small"
+                  controls-position="right"
+                  @update:model-value="(v: number | undefined) => prefs.updateEditor({ fontSize: v ?? 14 })"
+                />
+              </div>
+              <div class="hint-line">{{ t('settings.editorFontSizeHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('settings.fontPreview')">
+              <div
+                class="font-preview"
+                :style="{ fontFamily: editorFontStack(prefs.editor.fontFamily), fontSize: prefs.editor.fontSize + 'px' }"
+              >
+                <span class="fp-main">SELECT o.id, o.amount FROM orders o WHERE o.status = 'PAID';</span>
+                <span class="fp-sub">-- 0O 1lI {}[] &lt;=&gt; 与缩略图随字号实时生效</span>
+              </div>
             </el-form-item>
             <el-form-item :label="t('settings.editorTabSize')">
               <el-input-number
@@ -749,6 +831,8 @@
             </el-form-item>
           </el-form>
         </template>
+        <!-- UX-FRW SettingsShell 规范：设置页 footnote「即时生效无需保存」（模式 13/15） -->
+        <div class="settings-footnote">{{ t('settings.liveNote') }}</div>
       </main>
     </div>
   </el-dialog>
@@ -771,6 +855,7 @@ import ValueRuleEditor from './ValueRuleEditor.vue'
 import EmptyState from './EmptyState.vue'
 import { plsqlDeveloperPreset, defaultFormatPrefs } from '../stores/preferences'
 import { usePreferencesStore } from '../stores/preferences'
+import { UI_FONT_OPTIONS, MONO_FONT_OPTIONS, editorFontStack } from '../utils/fonts'
 import { useUpdateStore } from '../stores/update'
 import { setResolvedTemplates } from '../utils/sqlTemplates'
 import { SHORTCUT_ACTIONS, eventToCombo } from '../utils/shortcuts'
@@ -1149,10 +1234,6 @@ async function resetAllTemplates(): Promise<void> {
 }
 
 .nav-item {
-.nav-item :deep(.el-icon) {
-  font-size: var(--pd-icon-md);
-}
-
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1162,6 +1243,10 @@ async function resetAllTemplates(): Promise<void> {
   color: var(--el-text-color-regular);
   cursor: pointer;
   user-select: none;
+}
+
+.nav-item :deep(.el-icon) {
+  font-size: var(--pd-icon-md);
 }
 
 .nav-item:hover {
@@ -1190,6 +1275,69 @@ async function resetAllTemplates(): Promise<void> {
   margin-bottom: 12px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+/* 字体设置栏（对齐 UX-FRW UxSlider/UxSelect 模式）：滑杆+数值联动、hint 描述、实时预览 */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.slider-row :deep(.el-slider) {
+  flex: 1;
+}
+
+.slider-row .el-input-number {
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.font-select {
+  width: 100%;
+}
+
+.hint-line {
+  width: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-placeholder);
+}
+
+.font-preview {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.font-preview .fp-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-preview .fp-sub {
+  font-size: 0.85em;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-footnote {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 
 .field-hint {

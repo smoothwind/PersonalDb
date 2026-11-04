@@ -43,6 +43,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { useSnippetStore, type SnippetPlaceholder } from '../stores/snippets'
 import { useConnectionStore } from '../stores/connections'
 import { toCodeMirrorKey } from '../utils/shortcuts'
+import { editorFontStack } from '../utils/fonts'
 import { compressSql } from '../utils/sqlFormat'
 import { convertOutsideLiterals } from '../utils/sqlCase'
 import { dbSchemaSnapshot } from '../api/db'
@@ -171,7 +172,7 @@ function fontTheme(size: number) {
   return EditorView.theme({
     '&': { fontSize: `${size}px` },
     '.cm-content': {
-      fontFamily: "Consolas, 'Cascadia Mono', 'Courier New', monospace",
+      fontFamily: editorFontStack(prefs.editor.fontFamily),
       padding: '8px 0',
     },
     '.cm-scroller': { overflow: 'auto' },
@@ -592,9 +593,9 @@ watch(
   },
 )
 watch(
-  () => prefs.editor.fontSize,
-  (size) => {
-    view?.dispatch({ effects: fontComp.reconfigure(fontTheme(size)) })
+  () => [prefs.editor.fontSize, prefs.editor.fontFamily],
+  ([size]) => {
+    view?.dispatch({ effects: fontComp.reconfigure(fontTheme(size as number)) })
   },
 )
 // 快捷键绑定变更实时生效

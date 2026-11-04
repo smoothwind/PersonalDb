@@ -75,6 +75,7 @@ import { usePreferencesStore } from '../stores/preferences'
 import { compressSql, formatSql } from '../utils/sqlFormat'
 import { convertOutsideLiterals } from '../utils/sqlCase'
 import { cleanDdl } from '../utils/ddlClean'
+import { editorFontStack } from '../utils/fonts'
 import type { DbKind } from '../types/db'
 
 /**
@@ -138,7 +139,7 @@ function fontTheme(size: number) {
   return EditorView.theme({
     '&': { fontSize: `${size}px`, height: '100%' },
     '.cm-content': {
-      fontFamily: "Consolas, 'Cascadia Mono', 'Courier New', monospace",
+      fontFamily: editorFontStack(prefs.editor.fontFamily),
       padding: '8px 0',
     },
     '.cm-scroller': { overflow: 'auto' },
@@ -254,9 +255,9 @@ watch(
 )
 
 watch(
-  () => prefs.editor.fontSize,
-  (size) => {
-    view?.dispatch({ effects: fontComp.reconfigure(fontTheme(size)) })
+  () => [prefs.editor.fontSize, prefs.editor.fontFamily],
+  ([size]) => {
+    view?.dispatch({ effects: fontComp.reconfigure(fontTheme(size as number)) })
   },
 )
 
