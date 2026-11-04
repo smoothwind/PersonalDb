@@ -454,6 +454,7 @@
 <LogViewer v-model="logViewerVisible" />
 <DriverManager v-model="driverManagerVisible" />
 <ConfigTransferDialog v-model:visible="transferVisible" initial-tab="export" />
+<DangerConfirmDialog />
 <CommandPalette v-model:visible="paletteVisible" :commands="paletteCommands" />
 
       <!-- 关于 -->
@@ -497,6 +498,7 @@ const SettingsDialog = defineAsyncComponent(() => import('./components/SettingsD
 const LogViewer = defineAsyncComponent(() => import('./components/LogViewer.vue'))
 const DriverManager = defineAsyncComponent(() => import('./components/DriverManager.vue'))
 const ConfigTransferDialog = defineAsyncComponent(() => import('./components/ConfigTransferDialog.vue'))
+const DangerConfirmDialog = defineAsyncComponent(() => import('./components/DangerConfirmDialog.vue'))
 import { TOURS, maybeAutoTour, startTour } from './tours'
 import { useLayoutStore, type PanelId } from './stores/layout'
 import CommandPalette from './components/CommandPalette.vue'

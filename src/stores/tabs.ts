@@ -8,9 +8,11 @@ import { useHistoryStore } from './history'
 import { usePreferencesStore } from './preferences'
 import { useSqlTemplatesStore } from './sqlTemplates'
 import { useLogStore, sqlTitle } from './logs'
+import { useDangerStore } from './danger'
 import { logger } from '../utils/logger'
 import { pagedSql, previewSelectSql } from '../utils/sqlTemplates'
 import { splitStatements } from '../utils/sqlSplit'
+import { classifySql } from '../utils/riskySql'
 import type { DbKind, DbObjectType, QueryResult, TabSnapshot } from '../types/db'
 
 const tt = i18n.global.t
@@ -89,6 +91,7 @@ export const useTabsStore = defineStore('tabs', () => {
   const prefsStore = usePreferencesStore()
   const historyStore = useHistoryStore()
   const logStore = useLogStore()
+  const dangerStore = useDangerStore()
   const tplStore = useSqlTemplatesStore()
 
   function openTab(input: {
@@ -355,6 +358,49 @@ export const useTabsStore = defineStore('tabs', () => {
   const sqlText = sqlOverride ?? tab.sql
   const trimmed = sqlText.trim()
   if (!trimmed) return
+  // 危险操作检测与二次确认（SPEC-SAFE-1）：runTab 是全部执行入口的 choke point。
+  // 取消 → 静默返回（不入历史、不记日志）；block 档 → 直接拒绝并留日志。
+  const verdict = classifySql(sqlText, tab.kind)
+  if (verdict.level !== 'safe') {
+    const dp = prefsStore.danger
+    const riskType = verdict.level === 'danger' ? 'destructiveDdl' : 'noWhereDml'
+    const action = verdict.level === 'danger' ? dp.actionDestructiveDdl : dp.actionNoWhereDml
+    if (action !== 'off') {
+      const exemptKey = `${tab.connectionId}:${riskType}`
+      if (action === 'block') {
+        tab.error = tt('danger.blocked')
+        logStore.push({
+          level: 'warn',
+          kind: 'sql',
+          title: tt('danger.blockedTitle'),
+          detail: sqlText.slice(0, 500),
+          conn: tab.connectionName,
+          db: tab.database,
+        })
+        return
+      }
+      if (!dangerStore.isExempted(exemptKey, dp.exemptionScope)) {
+        const txnManual = connStore.txModeOf(tab.connectionId) === 'manual'
+        // 事务降级（NN/g undo 原则）：手动事务可回滚 → danger 免输对象名，降为普通确认
+        const downgraded = verdict.level === 'danger' && txnManual && dp.txnDowngrade
+        const needType = action === 'typeConfirm' && !downgraded
+        const target = verdict.items.flatMap((i) => i.objects)[0] ?? ''
+        const { ok } = await dangerStore.request({
+          level: verdict.level,
+          type: riskType,
+          connectionName: tab.connectionName,
+          database: tab.database,
+          kind: tab.kind,
+          items: verdict.items,
+          needTypeConfirm: needType && !!target,
+          confirmTarget: target,
+          txnManual,
+          exemptKey,
+        })
+        if (!ok) return
+      }
+    }
+  }
   const startedAt = Date.now()
     // 请求序列：新执行/手动停止会使旧请求作废，保证按钮不会永久卡在 loading
     tab.runSeq += 1

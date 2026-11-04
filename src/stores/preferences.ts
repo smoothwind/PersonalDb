@@ -53,6 +53,31 @@ export interface QueryPrefs {
   execTimeoutSec: number
 }
 
+/** 危险操作确认行为档位（SPEC-SAFE-1） */
+export type DangerAction = 'off' | 'confirm' | 'typeConfirm' | 'block'
+
+/** 危险操作确认偏好（SPEC-SAFE-1，设置页「安全」分类可配） */
+export interface DangerPrefs {
+  /** 无 WHERE 的 UPDATE/DELETE 行为档位 */
+  actionNoWhereDml: DangerAction
+  /** 破坏性 DDL（DROP/TRUNCATE/ALTER…DROP）行为档位 */
+  actionDestructiveDdl: DangerAction
+  /** 「不再提示」豁免粒度：会话级（重启失效）/ 持久级（跨重启，可清除） */
+  exemptionScope: 'session' | 'persistent'
+  /** 手动事务模式下高危操作免输对象名（可回滚降级为普通确认） */
+  txnDowngrade: boolean
+}
+
+/** 兜底默认（供 loadPrefs 合并旧数据） */
+export function defaultDangerPrefs(): DangerPrefs {
+  return {
+    actionNoWhereDml: 'confirm',
+    actionDestructiveDdl: 'confirm',
+    exemptionScope: 'session',
+    txnDowngrade: true,
+  }
+}
+
 /** 数据格式展示偏好（单元格值的呈现方式） */
 export interface DataFormatPrefs {
   /** 日期时间显示格式：原始 / 本地 / ISO 8601 */
@@ -225,6 +250,7 @@ const EXPORT_KEY = 'personaldb.export'
 const FORMAT_KEY = 'personaldb.format'
 const SHORTCUT_KEY = 'personaldb.shortcuts'
 const UPDATE_KEY = 'personaldb.update'
+const DANGER_KEY = 'personaldb.danger'
 
 function initialTheme(): ThemeMode {
   const saved = localStorage.getItem(THEME_KEY)
@@ -256,6 +282,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       minimap: true,
     }),
   )
+  const danger = reactive<DangerPrefs>(loadPrefs<DangerPrefs>(DANGER_KEY, defaultDangerPrefs()))
   const result = reactive<ResultPrefs>(
     loadPrefs<ResultPrefs>(RESULT_KEY, {
       rowHeight: 'compact',
@@ -382,6 +409,11 @@ export const usePreferencesStore = defineStore('preferences', () => {
     localStorage.setItem(UPDATE_KEY, JSON.stringify({ ...update }))
   }
 
+  function updateDanger(patch: Partial<DangerPrefs>): void {
+    Object.assign(danger, patch)
+    localStorage.setItem(DANGER_KEY, JSON.stringify({ ...danger }))
+  }
+
   /** 记录「不再提示该版本」 */
   function skipVersion(version: string): void {
     updateUpdatePrefs({ skippedVersion: version })
@@ -430,6 +462,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     formatPrefs,
     update,
     shortcuts,
+    danger,
     setTheme,
     toggleTheme,
     changeLocale,
@@ -442,6 +475,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     updateExport,
     updateFormat,
     updateUpdatePrefs,
+    updateDanger,
     skipVersion,
     clearSkippedVersion,
     shortcutOf,

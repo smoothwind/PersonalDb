@@ -134,6 +134,9 @@ export const APP_ICONS: Record<string, string> = {
   // 关于 / 信息
   act_info:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="0.6" fill="currentColor"/>',
+  // 安全 / 危险操作防护
+  act_shield:
+    '<path d="M12 3.2 19 6v6.1c0 4.3-2.9 7.4-7 8.7-4.1-1.3-7-4.4-7-8.7V6z"/><path d="m9.2 11.8 2 2 3.6-3.8"/>',
   // 代码 / 编辑器
   act_code:
     '<path d="m9 8-4.5 4L9 16"/><path d="m15 8 4.5 4L15 16"/>',

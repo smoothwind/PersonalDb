@@ -576,6 +576,53 @@
           </el-table>
         </template>
 
+        <!-- 安全（危险操作确认，SPEC-SAFE-1） -->
+        <template v-else-if="active === 'safety'">
+          <div class="pref-section">{{ t('settings.safetySection') }}</div>
+          <el-form label-width="200px" size="small">
+            <el-form-item :label="t('settings.dangerNoWhereDml')">
+              <el-select
+                :model-value="prefs.danger.actionNoWhereDml"
+                style="width: 200px"
+                @update:model-value="(v: string | undefined) => prefs.updateDanger({ actionNoWhereDml: (v as DangerAction) ?? 'confirm' })"
+              >
+                <el-option v-for="a in dangerActions" :key="a.value" :label="a.label" :value="a.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('settings.dangerDestructiveDdl')">
+              <el-select
+                :model-value="prefs.danger.actionDestructiveDdl"
+                style="width: 200px"
+                @update:model-value="(v: string | undefined) => prefs.updateDanger({ actionDestructiveDdl: (v as DangerAction) ?? 'confirm' })"
+              >
+                <el-option v-for="a in dangerActions" :key="a.value" :label="a.label" :value="a.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('settings.dangerExemptionScope')">
+              <el-radio-group
+                :model-value="prefs.danger.exemptionScope"
+                @update:model-value="(v: string | number | boolean | undefined) => prefs.updateDanger({ exemptionScope: (v as 'session' | 'persistent') ?? 'session' })"
+              >
+                <el-radio-button value="session">{{ t('settings.exemptionScopeSession') }}</el-radio-button>
+                <el-radio-button value="persistent">{{ t('settings.exemptionScopePersistent') }}</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item :label="t('settings.dangerTxnDowngrade')">
+              <el-switch
+                :model-value="prefs.danger.txnDowngrade"
+                @update:model-value="(v: string | number | boolean) => prefs.updateDanger({ txnDowngrade: Boolean(v) })"
+              />
+              <div class="hint-line">{{ t('settings.dangerTxnDowngradeHint') }}</div>
+            </el-form-item>
+            <el-form-item v-if="dangerExemptCount > 0" :label="t('settings.dangerExemptList')">
+              <span class="exempt-count">{{ t('settings.dangerExemptCount', { n: dangerExemptCount }) }}</span>
+              <el-button size="small" type="danger" link @click="clearDangerExempts">
+                {{ t('settings.dangerExemptClear') }}
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </template>
+
         <!-- 存储 -->
         <template v-else-if="active === 'storage'">
           <div class="pref-section">{{ t('settings.storageSection') }}</div>
@@ -855,6 +902,8 @@ import ValueRuleEditor from './ValueRuleEditor.vue'
 import EmptyState from './EmptyState.vue'
 import { plsqlDeveloperPreset, defaultFormatPrefs } from '../stores/preferences'
 import { usePreferencesStore } from '../stores/preferences'
+import type { DangerAction } from '../stores/preferences'
+import { useDangerStore } from '../stores/danger'
 import { UI_FONT_OPTIONS, MONO_FONT_OPTIONS, editorFontStack } from '../utils/fonts'
 import { useUpdateStore } from '../stores/update'
 import { setResolvedTemplates } from '../utils/sqlTemplates'
@@ -880,6 +929,29 @@ const prefs = usePreferencesStore()
 const updateStore = useUpdateStore()
 
 const active = ref('appearance')
+const dangerStore = useDangerStore()
+const dangerExemptCount = ref(0)
+
+function refreshDangerExempts(): void {
+  dangerExemptCount.value = dangerStore.persistentList().length
+}
+
+watch(active, (k) => {
+  if (k === 'safety') refreshDangerExempts()
+})
+
+const dangerActions = computed(() => [
+  { value: 'off', label: t('settings.dangerActionOff') },
+  { value: 'confirm', label: t('settings.dangerActionConfirm') },
+  { value: 'typeConfirm', label: t('settings.dangerActionTypeConfirm') },
+  { value: 'block', label: t('settings.dangerActionBlock') },
+])
+
+function clearDangerExempts(): void {
+  dangerStore.clearPersistent()
+  refreshDangerExempts()
+  ElMessage.success(t('settings.dangerExemptCleared'))
+}
 
 /** 外部指定分类（如超时错误条直达「查询执行」） */
 watch(
@@ -959,6 +1031,7 @@ const categories = computed(() => [
   { key: 'viewer', label: t('settings.viewerSection'), icon: objectIcon('act_code_view') },
   { key: 'result', label: t('settings.resultSection'), icon: objectIcon('act_view_grid') },
   { key: 'dataformat', label: t('settings.dataFormatSection'), icon: objectIcon('act_format') },
+  { key: 'safety', label: t('settings.safetySection'), icon: objectIcon('act_shield') },
   { key: 'storage', label: t('settings.storageSection'), icon: objectIcon('obj_folder') },
   { key: 'sqlTemplates', label: t('settings.sqlTemplatesSection'), icon: objectIcon('obj_query') },
   { key: 'shortcuts', label: t('settings.shortcutsSection'), icon: objectIcon('act_keyboard') },
@@ -1338,6 +1411,12 @@ async function resetAllTemplates(): Promise<void> {
   border-top: 1px solid var(--el-border-color-lighter);
   font-size: 12px;
   color: var(--el-text-color-placeholder);
+}
+
+.exempt-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-right: 12px;
 }
 
 .field-hint {

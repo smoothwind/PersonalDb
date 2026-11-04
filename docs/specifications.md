@@ -339,6 +339,20 @@
 - **落点**：`utils/sqlGen.ts`（quoteIdent/buildSelectSql/buildInsertSql/formatColumns + `tests/sqlGen.spec.ts`）、`components/ContextMenu.vue`（children，SPEC-UI-31）、`ConnectionTree.vue`（菜单项 + `onMenuGenSql/onMenuCopyColumns`）、i18n `tree.genSql*/copyCols*/selectCopied…`（zh/en 双端）。
 - **后续（P2）**：复制「列名+类型」；表查看面板列 Tab「复制全部列名」；INSERT upsert 变体（ON DUPLICATE KEY / MERGE）；子菜单方向键 roving（依赖 ContextMenu 键盘焦点模型）。
 
+## SPEC-SAFE-1 危险操作检测与二次确认
+
+- **需求**：SQL 编辑器执行破坏性语句（无 WHERE 的 DML、DROP/TRUNCATE 等）此前零拦截，误操作直接落库；业界（DBeaver 分型开关 / DataGrip 豁免细则 / Workbench 硬阻止 / GitHub type-to-confirm）均有成熟方案。
+- **验收**：
+  - **检测器** `utils/riskySql.ts`：字符串/注释剥离后分类——**danger** = DROP TABLE/USER/TABLESPACE + 方言附加（mysql DATABASE；pg/gauss DATABASE/SCHEMA）、TRUNCATE、ALTER TABLE DROP COLUMN/PARTITION；**warn** = 无 WHERE 且无 LIMIT 的 UPDATE/DELETE、其余已知 DROP 对象（可重建）；未登记 DROP 类型保守按 warn；`-- pdb-ignore` 行注释逃生门；**Oracle 系不分割**整体检测，BEGIN/DECLARE 块或多语句拼接时扫描原始文本（覆盖 `EXECUTE IMMEDIATE 'DROP TABLE …'` 动态 SQL，普通 SELECT 字符串字面量不误报）；
+  - **拦截点** `stores/tabs.ts#runTab` 顶部（全部执行入口 choke point：执行全部/选中执行/历史回填/命令面板均覆盖）；取消静默返回（不入历史不记日志）；**block 档**直接拒绝并写日志；
+  - **确认弹窗** `DangerConfirmDialog.vue`（全局唯一，App.vue 挂载）：等级徽标 + 连接/库 + **可回滚性提示**（自动提交 = danger「不可回滚」；手动事务 = warning「提交前可回滚」）+ 风险语句清单（类型/对象名/语句摘要 200 字截断）；CTA 文案具体化；**取消按钮默认焦点**（不给危险按钮默认答案，NN/g）；danger 需**输入首个对象名**激活按钮（type-to-confirm，大小写不敏感，对齐结果集编辑预览惯例）；
+  - **事务降级**（NN/g undo 原则，可关）：手动事务模式 danger 免输对象名 → 普通确认；
+  - **豁免**：按 连接+风险类型 粒度；粒度 = 会话级（默认，重启失效）/ 持久级（localStorage `personaldb.dangerExempt`，设置页可清空）；
+  - **设置**（首选项「安全」分类，即时生效）：两类风险各自**行为档位** = 不提示 / 弹窗确认（默认）/ 输入对象名 / 阻止执行；
+  - **不动**：结果集编辑与结构面板变更执行已自有预览 + type-to-confirm 且走 dbExecute 直调（不经 runTab），零打扰；loadMore/导出/执行计划只读无感。
+- **落点**：`utils/riskySql.ts` + `tests/risky-sql.spec.ts`（20+ 用例）、`stores/danger.ts`（确认服务/豁免）、`components/DangerConfirmDialog.vue`、`stores/tabs.ts#runTab`、`stores/preferences.ts#DangerPrefs`（`personaldb.danger`）、`SettingsDialog.vue`（安全分类）、`utils/icons.ts#act_shield`、i18n `danger.*` / `settings.danger*`。
+- **后续（P2）**：EXPLAIN 行数预估（**COUNT(*) 方案否决**：大表全扫描；改用优化器估行 + 1.5s 超时 + 弹窗内异步回填 + 失败显示「未知」+ 方言白名单）；连接「生产」环境标记与更严策略；配置导入覆盖确认。
+
 ## SPEC-UI-15 浮层主题化
 
 - **需求**：系统 tooltip 等浮层配色须与主题一致。
