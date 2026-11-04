@@ -325,6 +325,20 @@
   - Oracle 对象右键提供「重新编译」（视图/过程/函数/触发器 `ALTER ... COMPILE`，索引 `ALTER INDEX ... REBUILD`）；其他数据库不显示该项。
 - **落点**：`db/objects.rs`（`ObjectInfo.status`、`CatalogQuery.status_index`）、`db/dialect/oracle.rs`（目录查询携带 status + `recompile_sql`）、三驱动 `run_catalog` 状态映射、`commands::db_recompile_object`、`ConnectionTree.vue`（角标/菜单）。
 
+## SPEC-TREE-7 表节点生成 SQL 与复制列名
+
+- **需求**：表/视图节点右键提供「生成 SQL（SELECT/INSERT 语句）」与「复制列名」快捷动作，替代手工拼写列清单。
+- **验收**：
+  - **菜单结构**：表/视图节点顶级项 = 查询数据 / **生成 SQL ▸**（SELECT 语句 / INSERT 语句）/ 查看结构 / 查看源码 / 复制 DDL / **复制列名 ▸**（4 预设）/ sep / 导出数据；两个级联组经 ContextMenu `children`（交互见 SPEC-UI-31）；
+  - **输出即复制**：生成结果一律**复制到剪贴板 + toast 通知**（`SELECT/INSERT 语句已复制`、`已复制 {n} 个列名`），**不开查询页签**、不自动执行；写剪贴板失败 error toast；
+  - **惰性取列**：菜单打开零查询；点击动作后才 `dbDescribeTable` 取列（视图同样有效），失败/空列 toast `获取列信息失败`；
+  - **方言矩阵**（`utils/sqlGen.ts`）：标识符引号 mysql|oceanbase=反引号、其余=双引号（内嵌引号双写转义）；INSERT 占位符 oracle|oceanbase-oracle=`:1,:2…`、其余=`?`；库限定仅 mysql|oceanbase（`` `db`.`tbl` ``）与 postgresql|gaussdb（`"db"."tbl"`），Oracle 系走 schema 上下文、SQLite/JDBC 单库不加前缀；结尾分号 oracle 系不加分号其余加；列 >8 时 SELECT 列清单 / INSERT 列与 VALUES 对称逐行缩进；
+  - **视图**：SELECT / 复制列名可用；INSERT 子项置灰（title 提示「视图不支持 INSERT 语句」）；
+  - **复制列名 4 预设**（不开放全组合）：裸列名逗号 / 方言引号逗号 / 别名限定 `t.col` 逗号 / 换行分隔；
+  - copyDdl 与新动作共用 `copyWithToast`（clipboard + success toast + 失败 error）。
+- **落点**：`utils/sqlGen.ts`（quoteIdent/buildSelectSql/buildInsertSql/formatColumns + `tests/sqlGen.spec.ts`）、`components/ContextMenu.vue`（children，SPEC-UI-31）、`ConnectionTree.vue`（菜单项 + `onMenuGenSql/onMenuCopyColumns`）、i18n `tree.genSql*/copyCols*/selectCopied…`（zh/en 双端）。
+- **后续（P2）**：复制「列名+类型」；表查看面板列 Tab「复制全部列名」；INSERT upsert 变体（ON DUPLICATE KEY / MERGE）；子菜单方向键 roving（依赖 ContextMenu 键盘焦点模型）。
+
 ## SPEC-UI-15 浮层主题化
 
 - **需求**：系统 tooltip 等浮层配色须与主题一致。
@@ -466,7 +480,7 @@
 - **需求**：全应用原有多套各自实现的右键菜单（连接树 `.ctx-menu`、页签 `.tab-ctx-menu`、结果单元格 `.cell-menu`、会话表头 `.hdr-menu`、表查看表头 `.insp-hdr-menu`），样式与收起行为各写一遍、易漏（历史上多次出现「菜单不收起/永久滞留」缺陷）。
 - **验收**：
   - **唯一实现** `components/ContextMenu.vue`：`Teleport` 到 body + 视口内收边（右/下溢出自动回退）+ **全局收起集中实现**（窗口失焦/缩放、他处左键或右键 capture、滚动、Esc）——调用点**禁止**再自行注册收起监听；
-  - **API**：`:visible`（v-model）、`:x/:y`、`:items="CtxMenuItem[]"`，`@select="key"`；项模型 `{ key, label, icon?, danger?, disabled?, hint?, title?, sep? }`，`icon` 支持 `APP_ICONS` key 或 EP 组件；
+  - **API**：`:visible`（v-model）、`:x/:y`、`:items="CtxMenuItem[]"`，`@select="key"`；项模型 `{ key, label, icon?, danger?, disabled?, hint?, title?, sep?, children? }`，`icon` 支持 `APP_ICONS` key 或 EP 组件；`children?: CtxMenuItem[]` 为**一级级联子菜单**（不递归多级）：父项点击/hover 展开（点击幂等不收起、不 emit select）、子项点击 emit `select(子 key)` 并整菜单收起、禁用父项不展开、Esc 两段关闭（先子后主）、视口右缘空间不足向左弹出（`is-flip`）；**全局点击收起按 `composedPath` 判定**——菜单内点击不无条件收起（由菜单自身动作决定，否则子菜单无法存活）；方向键 roving 未做（登记于 SPEC-TREE-7 后续）；
   - **视觉统一**：`min-width 168px`、项 `13px` 字 / `padding 5px 10px` / hover 主色淡底、危险项危险色淡底、禁用项 45% 并禁点、`.pd-ctx-sep` 分组线、`hint` 右对齐等宽字体；
   - **迁移范围**：连接树节点（按 `nodeType` 动态成组，含「已连接则不显示连接项」等条件项）、页签（重命名/分屏/关闭族）、结果单元格（按选区/视图/编辑态成组）、会话表头与表查看表头（移动到最前/最后/重置列，二者同构）；
   - 选择即执行并自动收起；`defineExpose`/旧 handler 保留但仅由 `onMenuSelect(key)` 派发（避免行为漂移）。

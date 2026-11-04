@@ -6,13 +6,40 @@
         <div
           v-else
           class="pd-ctx-item"
-          :class="{ 'is-danger': it.danger, 'is-disabled': it.disabled }"
+          :class="{
+            'is-danger': it.danger,
+            'is-disabled': it.disabled,
+            'is-open': it.children?.length && openKey === it.key,
+          }"
           :title="it.title"
           @click="onClick(it)"
+          @mouseenter="onEnter(it)"
         >
           <el-icon v-if="it.icon" class="pd-ctx-icon"><component :is="resolveIcon(it.icon)" /></el-icon>
           <span class="pd-ctx-label">{{ it.label }}</span>
           <span v-if="it.hint" class="pd-ctx-hint">{{ it.hint }}</span>
+          <span v-if="it.children?.length" class="pd-ctx-arrow">▸</span>
+          <!-- 一级级联子菜单（不递归多级，SPEC-UI-31）：absolute 悬挂于父项右缘 -->
+          <div
+            v-if="it.children?.length && openKey === it.key"
+            class="pd-ctx-sub"
+            :class="{ 'is-flip': subFlip }"
+          >
+            <template v-for="(c, ci) in it.children" :key="c.sep ? `sub-${ci}` : c.key">
+              <div v-if="c.sep" class="pd-ctx-sep" />
+              <div
+                v-else
+                class="pd-ctx-item"
+                :class="{ 'is-danger': c.danger, 'is-disabled': c.disabled }"
+                :title="c.title"
+                @click.stop="onSubClick(c)"
+              >
+                <el-icon v-if="c.icon" class="pd-ctx-icon"><component :is="resolveIcon(c.icon)" /></el-icon>
+                <span class="pd-ctx-label">{{ c.label }}</span>
+                <span v-if="c.hint" class="pd-ctx-hint">{{ c.hint }}</span>
+              </div>
+            </template>
+          </div>
         </div>
       </template>
     </div>
@@ -36,6 +63,8 @@ export interface CtxMenuItem {
   /** 右侧提示（快捷键等） */
   hint?: string
   title?: string
+  /** 一级级联子菜单（子项不支持再嵌套 children；父项点击/hover 展开，子项点击 emit select(key) 后整菜单收起） */
+  children?: CtxMenuItem[]
 }
 
 const props = defineProps<{
@@ -53,6 +82,14 @@ const emit = defineEmits<{
 const elRef = ref<HTMLElement | null>(null)
 const pos = ref({ x: 0, y: 0 })
 const style = computed(() => ({ left: `${pos.value.x}px`, top: `${pos.value.y}px` }))
+
+/** 当前展开子菜单的父项 key（null = 无展开） */
+const openKey = ref<string | null>(null)
+/** 子菜单是否向左弹出（视口右缘空间不足时翻转） */
+const subFlip = ref(false)
+
+/** 子菜单宽度估算值（翻转判定用，非精确渲染宽度） */
+const SUB_MENU_W = 200
 
 function resolveIcon(icon: string | Component): Component {
   return typeof icon === 'string' ? objectIcon(icon) : icon
@@ -72,17 +109,62 @@ async function place(): Promise<void> {
 }
 
 function close(): void {
+  openKey.value = null
   emit('update:visible', false)
+}
+
+/** 展开子菜单并按视口右缘空间决定是否向左弹出 */
+async function openSub(key: string): Promise<void> {
+  openKey.value = key
+  subFlip.value = false
+  await nextTick()
+  const parent = elRef.value?.querySelector('.pd-ctx-item.is-open')
+  if (!parent) return
+  const r = parent.getBoundingClientRect()
+  subFlip.value = r.right + SUB_MENU_W > window.innerWidth - 8
 }
 
 function onClick(it: CtxMenuItem): void {
   if (it.sep || it.disabled) return
+  if (it.children?.length) {
+    // 点击展开（幂等不收起）；不 emit select、不关菜单
+    if (openKey.value !== it.key) void openSub(it.key)
+    return
+  }
   emit('select', it.key)
   close()
 }
 
+function onSubClick(c: CtxMenuItem): void {
+  if (c.sep || c.disabled) return
+  emit('select', c.key)
+  close()
+}
+
+/** 悬停：父项展开子菜单，其余项收起已展开的子菜单 */
+function onEnter(it: CtxMenuItem): void {
+  if (it.disabled) return
+  if (it.children?.length) {
+    if (openKey.value !== it.key) void openSub(it.key)
+    return
+  }
+  if (openKey.value) openKey.value = null
+}
+
 function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') close()
+  if (e.key !== 'Escape') return
+  // 两段关闭：先子菜单后主菜单
+  if (openKey.value) {
+    openKey.value = null
+    return
+  }
+  close()
+}
+
+function onDocClick(e: MouseEvent): void {
+  // 菜单内点击不在此收起——由 onClick/onSubClick 决定（子菜单展开需要点击存活）
+  if (elRef.value && e.composedPath().includes(elRef.value)) return
+  close()
 }
 
 /** 全局收起：失焦 / 缩放 / 他处点击（含右键）/ 滚动 / Esc —— 一处实现，各调用点无需重复注册 */
@@ -92,7 +174,7 @@ function attach(): void {
   attached = true
   window.addEventListener('blur', close)
   window.addEventListener('resize', close)
-  document.addEventListener('click', close, true)
+  document.addEventListener('click', onDocClick, true)
   document.addEventListener('contextmenu', close, true)
   document.addEventListener('scroll', close, true)
   document.addEventListener('keydown', onKeydown, true)
@@ -103,7 +185,7 @@ function detach(): void {
   attached = false
   window.removeEventListener('blur', close)
   window.removeEventListener('resize', close)
-  document.removeEventListener('click', close, true)
+  document.removeEventListener('click', onDocClick, true)
   document.removeEventListener('contextmenu', close, true)
   document.removeEventListener('scroll', close, true)
   document.removeEventListener('keydown', onKeydown, true)
@@ -117,9 +199,12 @@ watch(
       attach()
       void place()
     } else {
+      openKey.value = null
       detach()
     }
   },
+  // 直接以 visible=true 挂载（测试/未来调用点）也要 attach
+  { immediate: true },
 )
 
 onBeforeUnmount(detach)
@@ -139,6 +224,7 @@ onBeforeUnmount(detach)
 }
 
 .pd-ctx-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -152,6 +238,12 @@ onBeforeUnmount(detach)
 }
 
 .pd-ctx-item:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+/* 子菜单展开时父项保持高亮（悬停态之外的持久态） */
+.pd-ctx-item.is-open {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
 }
@@ -189,6 +281,33 @@ onBeforeUnmount(detach)
   color: var(--el-text-color-placeholder);
   font-family: Consolas, monospace;
   letter-spacing: 0.5px;
+}
+
+.pd-ctx-arrow {
+  flex-shrink: 0;
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 一级级联子菜单：悬挂于父项右缘，视觉与主菜单一致 */
+.pd-ctx-sub {
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 4px;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* 视口右缘空间不足 → 向左弹出 */
+.pd-ctx-sub.is-flip {
+  left: auto;
+  right: 100%;
 }
 
 .pd-ctx-sep {

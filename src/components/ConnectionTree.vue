@@ -204,12 +204,14 @@ import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '../stores/connections'
 import { useTabsStore } from '../stores/tabs'
 import {
+  dbDescribeTable,
   dbFetchTableDdl,
   dbListObjectFolders,
   dbListObjects,
   dbRecompileObject,
   dbTestConnection,
 } from '../api/db'
+import { buildInsertSql, buildSelectSql, formatColumns, type ColumnFormat } from '../utils/sqlGen'
 import type { ConnectionConfig, ConnectionGroup, DbKind, DbObjectType } from '../types/db'
 
 const { t } = useI18n()
@@ -333,9 +335,34 @@ const menuItems = computed<CtxMenuItem[]>(() => {
     items.push({ key: 'delete', label: t('tree.deleteConnection'), icon: Delete, danger: true })
   } else if (tgt.nodeType === 'table') {
     push('queryRows', t('tree.queryRows'), Tickets)
+    items.push({
+      key: 'genSql',
+      label: t('tree.genSql'),
+      icon: Document,
+      children: [
+        { key: 'genSelect', label: t('tree.genSelect') },
+        {
+          key: 'genInsert',
+          label: t('tree.genInsert'),
+          disabled: tgt.typeLabel === 'VIEW',
+          title: tgt.typeLabel === 'VIEW' ? t('tree.viewInsertDisabled') : undefined,
+        },
+      ],
+    })
     push('tableMeta', t('tree.viewStructure'), Grid)
     push('tableSource', t('tree.viewSource'), Document)
     push('copyDdl', t('tree.copyDdl'), CopyDocument)
+    items.push({
+      key: 'copyColumns',
+      label: t('tree.copyColumns'),
+      icon: CopyDocument,
+      children: [
+        { key: 'copyColsPlain', label: t('tree.copyColsPlain') },
+        { key: 'copyColsQuoted', label: t('tree.copyColsQuoted') },
+        { key: 'copyColsAliased', label: t('tree.copyColsAliased') },
+        { key: 'copyColsLines', label: t('tree.copyColsLines') },
+      ],
+    })
     sep()
     push('export', t('tree.exportData'), Download)
   } else if (tgt.nodeType === 'db') {
@@ -406,6 +433,18 @@ function onMenuSelect(key: string): void {
       break
     case 'copyDdl':
       void onMenuCopyDdl()
+      break
+    case 'genSelect':
+      void onMenuGenSql('select')
+      break
+    case 'genInsert':
+      void onMenuGenSql('insert')
+      break
+    case 'copyColsPlain':
+    case 'copyColsQuoted':
+    case 'copyColsAliased':
+    case 'copyColsLines':
+      void onMenuCopyColumns(key)
       break
     case 'export':
       onMenuExport()
@@ -1251,11 +1290,82 @@ async function onMenuCopyDdl(): Promise<void> {
   if (!session) return
   try {
     const ddl = await dbFetchTableDdl(session.sessionId, target.database || null, target.label)
-    await navigator.clipboard.writeText(ddl)
-    ElMessage.success(t('tree.ddlCopied'))
+    await copyWithToast(ddl, 'tree.ddlCopied')
   } catch (e) {
     ElMessage.error(String(e))
   }
+}
+
+/** 复制文本到剪贴板并提示（copyDdl / 生成 SQL / 复制列名共用惯例，SPEC-TREE-7） */
+async function copyWithToast(text: string, successKey: string, params?: Record<string, unknown>): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(t(successKey, params))
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+/** 表节点上下文（生成 SQL / 复制列名共用前置；必须在 hideMenu 之前取 target） */
+function tableMenuContext():
+  | { sessionId: string; kind: DbKind; database: string | null; table: string; isView: boolean }
+  | null {
+  const target = menu.target
+  if (target?.nodeType !== 'table') return null
+  const session = connStore.sessionOf(target.connectionId)
+  if (!session) return null
+  return {
+    sessionId: session.sessionId,
+    kind: target.kind,
+    database: target.database || null,
+    table: target.label,
+    isView: target.typeLabel === 'VIEW',
+  }
+}
+
+/** 惰性取列名（菜单打开零查询，点击动作后才 describe；失败 toast 后返回 null） */
+async function fetchColumnsOrToast(ctx: NonNullable<ReturnType<typeof tableMenuContext>>): Promise<string[] | null> {
+  try {
+    const meta = await dbDescribeTable(ctx.sessionId, ctx.database, ctx.table)
+    if (!meta.columns.length) throw new Error('no columns')
+    return meta.columns.map((c) => c.name)
+  } catch (e) {
+    ElMessage.error(t('tree.colsFetchFailed'))
+    return null
+  }
+}
+
+/** 生成 SELECT/INSERT 语句 → 复制到剪贴板并通知（不开页签，SPEC-TREE-7） */
+async function onMenuGenSql(type: 'select' | 'insert'): Promise<void> {
+  const ctx = tableMenuContext()
+  hideMenu()
+  if (!ctx || (type === 'insert' && ctx.isView)) return
+  const columns = await fetchColumnsOrToast(ctx)
+  if (!columns) return
+  const opts = { table: ctx.table, database: ctx.database, columns }
+  await copyWithToast(
+    type === 'select' ? buildSelectSql(ctx.kind, opts) : buildInsertSql(ctx.kind, opts),
+    type === 'select' ? 'tree.selectCopied' : 'tree.insertCopied',
+  )
+}
+
+/** 子菜单 key → 列名格式变体 */
+const COPY_COLS_VARIANTS: Record<string, ColumnFormat> = {
+  copyColsPlain: 'plain',
+  copyColsQuoted: 'quoted',
+  copyColsAliased: 'aliased',
+  copyColsLines: 'lines',
+}
+
+/** 复制列名（4 预设变体，SPEC-TREE-7） */
+async function onMenuCopyColumns(key: string): Promise<void> {
+  const ctx = tableMenuContext()
+  const variant = COPY_COLS_VARIANTS[key]
+  hideMenu()
+  if (!ctx || !variant) return
+  const columns = await fetchColumnsOrToast(ctx)
+  if (!columns) return
+  await copyWithToast(formatColumns(ctx.kind, columns, variant), 'tree.colsCopied', { n: columns.length })
 }
 
 /** 库/表文件夹：新建表模板 */
