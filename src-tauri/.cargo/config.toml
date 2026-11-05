@@ -2,3 +2,8 @@
 # 若 PATH 中没有则在此指定路径。
 [env]
 RC = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\rc.exe'
+
+# 限制并行编译进程数：全量重编时并发 rustc 会把 commit 打满
+# （0xc000012d STATUS_COMMIT_LIMIT 导致级联假错），本机以 3 为稳
+[build]
+jobs = 3
