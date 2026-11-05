@@ -1,7 +1,8 @@
 # PersonalDb 功能规约（UI / 编辑器 / 结果集 / 浏览器）
 
 > 本文件为长期维护的功能规约，与 `AGENTS.md` 配合。新增或修改相关功能前先阅读对应条目；实现变更后同步修订本文。
-> 编号规则：`SPEC-<域>-<序号>`，域：UI / EDITOR / RESULT / TREE / PREFS / I18N。
+> 编号规则：`SPEC-<域>-<序号>`，域：UI / EDITOR / RESULT / TREE / PREFS / I18N / TX / CONN / SESSION / STORAGE / WORKSPACE / LOG / DEV / SAFE / TEMPLATE。
+> 流程总纲：**所有 BUG / Feature / 性能优化一律先提案、批准后实施**（见 SPEC-DEV-3）。
 
 ## SPEC-UI-1 结果集紧凑布局
 
@@ -776,6 +777,17 @@
 - **无应用内下载安装**：不需要签名密钥、`.sig`、`latest.json`；`tauri-plugin-updater`、`tauri-plugin-process`（含 `updater:default`、`process:allow-restart` 权限）、`plugins.updater` 配置与 `tauri.updater.conf.json` 均已删除。若要恢复「应用内安装」，需重新引入插件 + 签名密钥 + latest.json 链路。
 - **发布链路（GitHub）**：版本号在所有位置同步递增（`tauri.conf.json` / `package.json` / `package-lock.json`（2 处）/ `Cargo.toml` / `Cargo.lock`，以及界面硬编码的 `App.vue` 状态栏、`AboutDialog.vue`、`SettingsDialog.vue`）→ 打 `v*` 标签推送 → CI `bundle` 作业经 `tauri-apps/tauri-action@v1` 构建 MSI + NSIS 并建**草稿** Release（不需要任何 Secret）；确认产物后手动发布，旧版用户下次手动检查即可看到提示。标签含 `-`（beta / rc，如 `v0.1.0-beta.1`）时 `prerelease: contains(github.ref_name, '-')` 会标记为 pre-release，`/releases/latest` 不计入，故预发布不会推送给正式用户。
 - 前提：仓库可被匿名读取 `api.github.com`（公开仓库）；换仓库需改 `GITHUB_REPO` 常量并同步 README。
+
+## SPEC-DEV-3 变更提案流程（BUG / Feature / 性能优化一律先提案）
+
+- **需求**：所有变更（**BUG 修复 / 新功能 / 性能优化**）在实施前必须先输出**提案**并获得批准，杜绝「直接动手后返工」与「方案分歧事后拆解」。
+- **提案分级**：
+  - **BUG 修复（轻量）**：根因诊断（证据链 / 复现路径）+ 修复方案 + 影响面 + 验证方式；
+  - **Feature / 性能优化（完整）**：背景与目标、现状调研（鼓励业界方案对比，如 DBeaver / ODC / NN/g 等）、方案设计（含数据库差异 / 兼容性 / 对既有功能的影响）、实施清单与分期（M1/M2…）、验收用例、**度量基线与目标**（性能优化必填，如耗时 / 内存前后对比）、后续（P2）登记；
+  - 涉及规约（SPEC）的变更须在提案中指明修订对象。
+- **流程**：提案输出 → 用户批准（明确「批准/执行」确认；分歧点以问答收敛）→ 实施 → 校验（`npm run build` / `npm test` / `check:i18n` / `cargo check`，**退出码可信验证**）→ 提交 → 同步修订本文对应条目与 `AGENTS.md` →（如需）重打包安装。
+- **例外（免提案）**：文档措辞修订、纯注释 / 格式化、实施中测试暴露的笔误级修补；实现中发现提案外问题须停下补充提案再继续。
+- **落点**：本文档（本条）、`AGENTS.md`（工作流程约定同步）。
 
 ## SPEC-SESSION-3 OceanBase Oracle 会话/锁（OB 兼容视图）
 

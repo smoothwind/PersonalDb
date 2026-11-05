@@ -79,6 +79,8 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 
 ## 约定与注意事项
 
+- **变更提案约定（最高优先，必读）**：所有 BUG / Feature / 性能优化在实施前**必须先输出提案并获用户批准**——BUG 修复为轻量提案（根因诊断 + 方案 + 影响面 + 验证），Feature / 性能优化为完整提案（调研 + 设计 + 影响面 + 分期 + 验收 + 度量基线）；实现中发现提案外问题须停下补充提案；例外仅限文档措辞与格式化。详见 `docs/specifications.md` **SPEC-DEV-3**。
+
 - **功能规约（必读）**：`docs/specifications.md` 为长期维护的功能规约（UI/编辑器/结果集/浏览器/首选项/国际化），修改相关功能前先阅读对应条目，实现变更后同步修订
 - **国际化（必须遵守）**：所有 UI 文案必须走 vue-i18n，语言包在 `src/i18n/locales/zh-CN.ts` 与 `en.ts` **双端同步维护**，新增任何界面文字需同时补充两种语言；组件内用 `useI18n().t()`，非组件（store/工具）用 `i18n.global.t`；内置数据（如 snippetDefaults 的 description）存 i18n key 而非中文原文；**文案中的 `@` 必须写成 `{'@'}`**（否则被 vue-i18n 当作 linked message 语法导致模板编译崩溃，如 OB 用户名 `user{'@'}tenant`）
 - **用户偏好**：语言/主题/编辑器样式/源码查看器/数据格式/结果集展示/界面字体/导出默认项/SQL 美化等统一放 `stores/preferences.ts`（localStorage 持久化：`personaldb.locale`/`personaldb.theme`/`personaldb.editor`/`personaldb.viewer`/`personaldb.dataformat`/`personaldb.result`/`personaldb.query`/`personaldb.ui`/`personaldb.export`/`personaldb.format`/`personaldb.update`），**改动即时生效**（组件通过响应式偏好热更新）；首选项对话框（两栏式）内提供源码查看器与数据格式实时预览；Element Plus 组件文案由 App.vue 的 `el-config-provider` 动态绑定
