@@ -493,6 +493,7 @@ query: {
     empty: '暂无日志',
     rows: '{n} 行',
     sqlFailed: 'SQL 执行失败',
+    multiPrefix: '{n} 条语句 · {summary}',
     pagedFailed: '分页加载失败',
     connected: '已连接 {name}',
     connectFailed: '连接失败 {name}',

@@ -297,7 +297,7 @@ export const useTabsStore = defineStore('tabs', () => {
       logStore.push({
         level: 'error',
         kind: 'sql',
-        title: sqlTitle(sqlText),
+        title: sqlTitle(sqlText, stmts.length),
         detail: firstErr,
         conn: tab.connectionName,
         db: tab.database,
@@ -324,7 +324,7 @@ export const useTabsStore = defineStore('tabs', () => {
     logStore.push({
       level: firstErr ? 'warn' : 'info',
       kind: 'sql',
-      title: sqlTitle(sqlText),
+      title: sqlTitle(sqlText, stmts.length),
       detail: firstErr || undefined,
       conn: tab.connectionName,
       db: tab.database,

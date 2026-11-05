@@ -494,6 +494,7 @@ query: {
     empty: 'No log entries',
     rows: '{n} rows',
     sqlFailed: 'SQL execution failed',
+    multiPrefix: '{n} statements · {summary}',
     pagedFailed: 'Paged fetch failed',
     connected: 'Connected {name}',
     connectFailed: 'Connect failed {name}',

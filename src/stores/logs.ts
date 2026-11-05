@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { i18n } from '../i18n'
 
 export type LogLevel = 'error' | 'warn' | 'info'
 export type LogKind = 'sql' | 'conn'
@@ -26,14 +27,17 @@ export interface LogEntry {
 const MAX_ENTRIES = 1000
 const TITLE_MAX = 160
 
-/** SQL 摘要：取首个非空行并截断 */
-export function sqlTitle(sql: string): string {
+/** SQL 摘要：取首个非空行并截断；多语句时加「N 条语句」前缀（i18n） */
+export function sqlTitle(sql: string, count?: number): string {
   const line =
     sql
       .split('\n')
       .map((s) => s.trim())
       .find(Boolean) ?? ''
-  return line.length > TITLE_MAX ? line.slice(0, TITLE_MAX) + '…' : line
+  const base = line.length > TITLE_MAX ? line.slice(0, TITLE_MAX) + '…' : line
+  return count && count > 1
+    ? i18n.global.t('logs.multiPrefix', { n: count, summary: base })
+    : base
 }
 
 /** 日志面板数据源：SQL 执行成败 / 连接事件统一入栈 */
