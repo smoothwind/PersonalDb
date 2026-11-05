@@ -10,7 +10,8 @@ npm run build            # vue-tsc 类型检查 + vite 打包（提交前必跑�
 npm test                 # Vitest 单测（jsdom，含 About 对话框/连接分组回归）
 npm run dev              # 仅前端 Vite 开发服务器
 npm run tauri dev        # 完整桌面应用开发调试
-npm run bundle:all       # 打包 MSI + NSIS（CI bundle 作业用；本地需 Go + Maven + JRE 21）
+npm run bundle         # 打包仅 MSI（日常自装提速档：省 NSIS ~1 分钟）
+npm run bundle:all     # 打包 MSI + NSIS（发布用；CI bundle 作业用；本地需 Go + Maven + JRE 21）
 
 # Rust（src-tauri 目录）
 cargo check                        # 后端类型检查（默认已含 oracle 特性，提交前必跑）

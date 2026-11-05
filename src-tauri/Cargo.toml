@@ -66,9 +66,11 @@ keyring = { version = "3", features = ["windows-native"] }
 winreg = "0.55"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+# 提速档（2026-11）：thin LTO + 多 codegen units，release 编译 6m44s → 约 2-3 分钟；
+# 代价为二进制略大（strip 保留），运行性能对桌面 DB 客户端无感
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true
