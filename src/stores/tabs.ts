@@ -11,7 +11,7 @@ import { useLogStore, sqlTitle } from './logs'
 import { useDangerStore } from './danger'
 import { logger } from '../utils/logger'
 import { pagedSql, previewSelectSql } from '../utils/sqlTemplates'
-import { splitStatements } from '../utils/sqlSplit'
+import { splitStatements, hasPlSqlBlock } from '../utils/sqlSplit'
 import { classifySql } from '../utils/riskySql'
 import type { DbKind, DbObjectType, QueryResult, TabSnapshot } from '../types/db'
 
@@ -413,11 +413,11 @@ export const useTabsStore = defineStore('tabs', () => {
     )
     // 首页仅拉取一页（滚动触底后由 loadMore 续拉）
     const pageSize = Math.max(1, Math.min(prefsStore.result.pageSize, prefsStore.result.maxTotalRows))
-    // 多语句：非 Oracle 类连接按语句分割（Oracle PL/SQL 块内含分号，跳过分割）
-    const stmts =
-      tab.kind === 'oracle' || tab.kind === 'oceanbase-oracle'
-        ? [sqlText]
-        : splitStatements(sqlText)
+    // 多语句：Oracle 系仅当含 PL/SQL 块（BEGIN..END/DECLARE/CREATE PROCEDURE 等）时整段
+    // 执行（块内分号不可分割）；其余一律按分号分割逐条执行——OB Oracle 服务端对多语句
+    // 整段文本会报 ORA-00600 [5031]，业界共识为客户端拆分、逐条发送（见 SPEC-EDITOR-3）
+    const isOracleKind = tab.kind === 'oracle' || tab.kind === 'oceanbase-oracle'
+    const stmts = isOracleKind && hasPlSqlBlock(sqlText) ? [sqlText] : splitStatements(sqlText)
     if (stmts.length > 1) {
       try {
         await runMultiStatements(tab, session.sessionId, stmts, pageSize, seq, startedAt)

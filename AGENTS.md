@@ -49,7 +49,7 @@ cargo fix --lib --allow-dirty      # 自动修复 warning
 - 图标尺寸/焦点环约定：尺寸走 `styles/tokens.css` 的 `--pd-icon-sm/md/lg`（13/15/17，新代码禁止散落 `:size` 数字）；自绘 button 必须带 `:focus-visible` 焦点环（SPEC-UI-30）
 - i18n 校验约定：`npm run check:i18n`（`scripts/check-i18n.mts`，node strip-types 递归对比 zh/en 叶子 key，缺失即非零退出；**需 Node 22.6+**，Node 20 报 `bad option: --experimental-strip-types`）；CI（`.github/workflows/ci.yml`）强制执行
 - 虚拟滚动约定：结果集 >600 行且非编辑态走 `ResultVirtualGrid.vue`（el-table-v2，排序+右键复制），否则完整 el-table；行对象按 `c{count}_{name}` prop 键，虚拟模式需转矩阵
-- 多结果集约定：非 Oracle 连接 `splitStatements` 分割后逐条执行（`runMultiStatements`），`tab.multiResults/activeResultIndex` + segmented 切换；Oracle 含 PL/SQL 块跳过分割
+- 多结果集约定：splitStatements 分割后逐条执行（runMultiStatements），**Oracle 系仅当含 PL/SQL 块（`BEGIN..END`/`DECLARE`/`CREATE PROCEDURE|FUNCTION|TRIGGER|PACKAGE|TYPE`，`hasPlSqlBlock` 字符串/注释不误判）时整段执行**——OB Oracle 服务端对多语句整段文本报 ORA-00600 [5031]，业界共识为客户端拆分逐条发送
 - 编辑撤销约定：`editUndoStack/editRedoStack` 全量快照（上限 50），五类变更入口均需 `pushEditUndo()`；Ctrl+Z/Ctrl+Y 经 `onEditKeydown`（编辑态且非单元格输入中）；逻辑抽为 `composables/useEditUndo.ts`
 - 历史存储约定：SQLite（`history.rs`，存储类别 History/`history.db`，上限 500，WAL）；`stores/history.ts` 后端化（旧 localStorage 首次迁移），`push` 乐观插入
 - 更新约定：`stores/update.ts` 统一检测（**无自动检测**：仅帮助菜单「检查更新」/首选项按钮手动触发 → `fetch` GitHub `releases/latest` → `utils/version.ts#compareVersions` 与 `getVersion()` 比较）；命中后状态栏常驻入口（点击 `opener.openUrl` 打开发布页）+ 帮助菜单红点，可「不再提示此版本」（跳过版本存 `personaldb.update`）；**不下载安装、不需要签名密钥**；端点仓库 `GITHUB_REPO` 常量与发布链路（tauri-action 草稿 Release）见 SPEC-DEV-2；**发版需同步版本号 8 处**（`tauri.conf.json`、`package.json`、`package-lock.json`×2、`Cargo.toml`、`Cargo.lock` + 界面硬编码 `App.vue` 状态栏/`AboutDialog.vue`/`SettingsDialog.vue`），标签含 `-` 时自动标记 pre-release

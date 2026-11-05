@@ -261,8 +261,9 @@
 - **验收**：
   - 工具栏三个图标按钮（▶ 全部 / 选中 / 当前行）+ 快捷键：`Ctrl+Enter` / `Ctrl+Shift+Enter` / `Ctrl+Alt+Enter`（均可在快捷键设置中改绑）；
   - 选中为空时回退执行全部；当前行取光标所在行文本；
-  - 三种范围共用执行序列号与停止机制。
-- **落点**：`components/SqlEditor.vue#getCurrentLine/customKeymap`、`QueryTabPane.vue#run`、`utils/shortcuts.ts`。
+  - 三种范围共用执行序列号与停止机制；
+  - **多语句分割策略（2026-11 修订）**：所有连接按 `;` 分割（字符串/注释感知）逐条执行；Oracle 系仅当含 PL/SQL 块（`BEGIN..END` / `DECLARE` / `CREATE [OR REPLACE] PROCEDURE|FUNCTION|TRIGGER|PACKAGE|TYPE`，`hasPlSqlBlock` 字符串/注释剥离后检测不误判）时整段发送。此前 Oracle 系一刀切整段下发，OB Oracle 服务端对多语句文本报 `ORA-00600 [5031] Column not found`（业界共识：DBeaver / ODC / SQL*Plus 均客户端拆分逐条发送，PL 块识别为单条）。
+- **落点**：`components/SqlEditor.vue#getCurrentLine/customKeymap`、`QueryTabPane.vue#run`、`utils/shortcuts.ts`、`utils/sqlSplit.ts#hasPlSqlBlock`、`stores/tabs.ts#runTab`（分割策略）、`tests/sql-split.spec.ts`。
 
 ## SPEC-UI-12 菜单栏样式与快捷键绑定
 
