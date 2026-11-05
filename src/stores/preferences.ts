@@ -80,12 +80,16 @@ export function defaultDangerPrefs(): DangerPrefs {
 
 /** 生成 SQL 行为偏好（SPEC-TREE-7：生成 SELECT/INSERT/CREATE 与复制列名共用） */
 export interface SqlGenPrefs {
-  /** 去除库/模式限定符（生成语句不带前缀；CREATE 去属主前缀并去标识符引号） */
+  /** 去除库/模式限定符（仅生成 SELECT/INSERT 不带前缀） */
   stripQualifier: boolean
   /** 标识符大小写（生成语句、列名与 CREATE 文本；关键字含义不受影响） */
   identifierCase: 'original' | 'upper' | 'lower'
-  /** CREATE 去除存储相关子句（STORAGE/TABLESPACE/ENGINE 等） */
+  /** CREATE / 源码查看器去除存储相关子句（STORAGE/TABLESPACE/ENGINE 等） */
   stripStorage: boolean
+  /** CREATE / 源码查看器 / 例程去除 schema（属主）名称前缀 */
+  ddlStripSchema: boolean
+  /** CREATE / 源码查看器去除标识符引号（" / ` / []） */
+  ddlStripQuote: boolean
 }
 
 /** 兜底默认（供 loadPrefs 合并旧数据；与源码查看器复选框现状一致全关） */
@@ -94,6 +98,8 @@ export function defaultSqlGenPrefs(): SqlGenPrefs {
     stripQualifier: false,
     identifierCase: 'original',
     stripStorage: false,
+    ddlStripSchema: false,
+    ddlStripQuote: false,
   }
 }
 

@@ -102,7 +102,7 @@
             <el-icon><component :is="objectIcon('act_lower')" /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-checkbox v-model="stripQualifier" size="small" :disabled="!editMode">{{ t('inspector.stripQualifier') }}</el-checkbox>
+        <el-checkbox v-model="stripSchema" size="small" :disabled="!editMode">{{ t('settings.sqlGenDdlStripSchema') }}</el-checkbox>
         <span class="pt-sep" />
         <el-button size="small" :icon="Document" @click="openInQuery">
           {{ t('inspector.openInQuery') }}
@@ -150,7 +150,7 @@ import { useConnectionStore } from '../stores/connections'
 import { usePreferencesStore } from '../stores/preferences'
 import { formatSql } from '../utils/sqlFormat'
 import { convertOutsideLiterals } from '../utils/sqlCase'
-import { stripQualifier as stripQualifierText } from '../utils/ddlClean'
+import { stripSchemaPrefix } from '../utils/ddlClean'
 import { useSnippetStore } from '../stores/snippets'
 import { useTabsStore, type QueryTab } from '../stores/tabs'
 import type { RoutineInfo } from '../types/db'
@@ -172,21 +172,23 @@ const info = ref<RoutineInfo | null>(null)
 const source = ref('')
 /** 编辑状态：默认只读，点「编辑」后方可修改 */
 const editMode = ref(false)
-/** 去除限定符开关（作用于源码） */
-const stripQualifier = ref(false)
+/** 去除 schema 前缀开关（跟随首选项「SQL 生成 → 去除 schema 名称」，作用于源码） */
+const stripSchema = computed({
+  get: () => prefs.sqlGen.ddlStripSchema,
+  set: (v: boolean) => prefs.updateSqlGen({ ddlStripSchema: v }),
+})
 
 function toggleEdit(): void {
   if (editMode.value) {
     editMode.value = false
-    stripQualifier.value = false
-    void load() // 取消：重新加载原始源码
+    void load() // 取消：重新加载原始源码（去 schema 开关为持久偏好，不随编辑态重置）
   } else {
     editMode.value = true
   }
 }
 
-watch(stripQualifier, (v) => {
-  if (v && source.value) source.value = stripQualifierText(source.value)
+watch(stripSchema, (v) => {
+  if (v && source.value) source.value = stripSchemaPrefix(source.value)
 })
 
 function beautify(): void {
@@ -213,7 +215,6 @@ async function load(): Promise<void> {
   info.value = null
   source.value = ''
   editMode.value = false
-  stripQualifier.value = false
   try {
     const session = connStore.sessionOf(props.tab.connectionId)
     if (!session) {

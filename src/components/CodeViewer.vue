@@ -24,15 +24,14 @@
       </el-button>
       <el-button size="small" @click="caseConvert('upper')">{{ t('codeViewer.upper') }}</el-button>
       <el-button size="small" @click="caseConvert('lower')">{{ t('codeViewer.lower') }}</el-button>
-      <el-checkbox
-        v-if="ddlOptions"
-        v-model="stripStorage"
-        size="small"
-      >
-        {{ t('inspector.stripStorage') }}
+      <el-checkbox v-if="ddlOptions" v-model="stripStorage" size="small">
+        {{ t('settings.sqlGenStripStorage') }}
       </el-checkbox>
-      <el-checkbox v-if="ddlOptions" v-model="stripQualifier" size="small">
-        {{ t('inspector.stripQualifier') }}
+      <el-checkbox v-if="ddlOptions" v-model="stripSchema" size="small">
+        {{ t('settings.sqlGenDdlStripSchema') }}
+      </el-checkbox>
+      <el-checkbox v-if="ddlOptions" v-model="stripQuote" size="small">
+        {{ t('settings.sqlGenDdlStripQuote') }}
       </el-checkbox>
       <el-button size="small" :icon="ScaleToOriginal" @click="compressCode">
         {{ t('query.compress') }}
@@ -97,16 +96,27 @@ const prefs = usePreferencesStore()
 const hostEl = ref<HTMLDivElement>()
 let view: EditorView | null = null
 
-/** DDL 清洗选项 */
-const stripStorage = ref(false)
-const stripQualifier = ref(false)
+/** DDL 清洗选项（持久化于首选项「SQL 生成」，与设置面板双向同步） */
+const stripStorage = computed({
+  get: () => prefs.sqlGen.stripStorage,
+  set: (v: boolean) => prefs.updateSqlGen({ stripStorage: v }),
+})
+const stripSchema = computed({
+  get: () => prefs.sqlGen.ddlStripSchema,
+  set: (v: boolean) => prefs.updateSqlGen({ ddlStripSchema: v }),
+})
+const stripQuote = computed({
+  get: () => prefs.sqlGen.ddlStripQuote,
+  set: (v: boolean) => prefs.updateSqlGen({ ddlStripQuote: v }),
+})
 
 /** 实际展示内容（按清洗选项处理） */
 const displayText = computed(() =>
   props.ddlOptions
     ? cleanDdl(props.modelValue, props.kind, {
+        stripSchema: stripSchema.value,
+        stripQuote: stripQuote.value,
         stripStorage: stripStorage.value,
-        stripQualifier: stripQualifier.value,
       })
     : props.modelValue,
 )

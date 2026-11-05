@@ -332,7 +332,11 @@
 - **验收**：
   - **菜单结构**：表/视图节点顶级项 = 查询数据 / **生成 SQL ▸** / 查看结构 / 查看源码 / sep / 导出数据；子菜单（唯一生成入口，8 项）= SELECT 语句 / INSERT 语句（视图置灰）/ **CREATE 语句**（原「复制 DDL」迁入） / sep / 列名（逗号分隔）/ 列名（引号包裹）/ 别名限定（t.列名）/ 列名（换行分隔）；级联经 ContextMenu `children`（交互见 SPEC-UI-31）；
   - **输出即复制**：生成结果一律**复制到剪贴板 + toast 通知**（`SELECT/INSERT/CREATE 语句已复制`、`已复制 {n} 个列名`），**不开查询页签**、不自动执行；写剪贴板失败 error toast；
-  - **行为偏好**（首选项「查询 → SQL 生成」，`personaldb.sqlgen`，即时生效）：`stripQualifier`（生成语句不带库/模式前缀；CREATE 去属主前缀并去标识符引号）、`identifierCase`（original/upper/lower，作用于生成语句、列名与 CREATE 文本——CREATE 经 `convertOutsideLiterals` 跳过字符串字面值）、`stripStorage`（仅 CREATE：复用 `utils/ddlClean.ts#stripStorage`，STORAGE/TABLESPACE/PCTFREE/ENGINE/CHARSET 等按方言）；三项默认关闭/保持原样（与源码查看器复选框现状一致）；
+  - **行为偏好**（首选项「查询 → SQL 生成」，`personaldb.sqlgen`，即时生效）：
+    - 生成语句：`stripQualifier`（SELECT/INSERT 不带库/模式前缀）、`identifierCase`（original/upper/lower，作用于生成语句、列名与 CREATE 文本——CREATE 经 `convertOutsideLiterals` 跳过字符串字面值）；
+    - **DDL 清洗**（CREATE / 源码查看器 / 导出，2026-11 细化）：`stripStorage`（去 STORAGE/TABLESPACE/PCTFREE/ENGINE/CHARSET 等，复用 `utils/ddlClean.ts#stripStorage` 按方言）、`ddlStripSchema`（去属主/schema 前缀）、`ddlStripQuote`（去标识符引号）——`stripQualifier` 旧参数（= schema+quote 捆绑）兼容保留，`ddlClean.ts#stripSchemaPrefix/stripQuoteMarks` 可独立开关；源码查看器三复选框与设置面板双向绑定同一偏好；例程编辑「去 schema」跟随 `ddlStripSchema`；
+    - 三项默认关闭/保持原样（与源码查看器复选框现状一致）；
+  - **DDL 注释附加**（2026-11，Oracle 系含 OB Oracle）：`GET_DDL` 默认不导出注释（COMMENT transform OFF）→ 获取 DDL 后查询 `all_tab_comments` / `all_col_comments` 拼接 `COMMENT ON TABLE/COLUMN` 语句附在尾部（有注释才附加；查询失败 best-effort 降级原样；不采用 SET_TRANSFORM_PARAM——OB 兼容性存疑且为会话级副作用）；**生成 CREATE / 查看源码 / 导出 SQL** 三处统一生效（`dialect.ddl_comment_append()` 方言开关 + `append_comment_statements` 共享拼接）；
   - **惰性取列**：菜单打开零查询；点击动作后才 `dbDescribeTable` 取列（视图同样有效），失败/空列 toast `获取列信息失败`；
   - **方言矩阵**（`utils/sqlGen.ts`）：标识符引号 mysql|oceanbase=反引号、其余=双引号（内嵌引号双写转义）；INSERT 占位符 oracle|oceanbase-oracle=`:1,:2…`、其余=`?`；库限定仅 mysql|oceanbase（`` `db`.`tbl` ``）与 postgresql|gaussdb（`"db"."tbl"`），Oracle 系走 schema 上下文、SQLite/JDBC 单库不加前缀；结尾分号 oracle 系不加分号其余加；列 >8 时 SELECT 列清单 / INSERT 列与 VALUES 对称逐行缩进；
   - **视图**：SELECT / 复制列名可用；INSERT 子项置灰（title 提示「视图不支持 INSERT 语句」）；

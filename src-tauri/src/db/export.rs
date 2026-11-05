@@ -146,11 +146,52 @@ pub async fn run_export(
             if req.include_ddl {
                 let ddl = match dialect.table_ddl_strategy(db, &req.table) {
                     DdlStrategy::Query(q) => {
-                        driver
+                        let mut ddl = driver
                             .query_text(&q.sql, &q.params, q.value_index)
                             .await?
                             .trim()
-                            .to_string()
+                            .to_string();
+                        // Oracle 系：GET_DDL 默认不含注释，追加 COMMENT ON 表/列语句（best-effort）
+                        if dialect.ddl_comment_append() {
+                            let qualified = match db {
+                                Some(owner) => format!(
+                                    "{}.{}",
+                                    dialect.quote_ident(owner),
+                                    dialect.quote_ident(&req.table)
+                                ),
+                                None => dialect.quote_ident(&req.table),
+                            };
+                            let cols =
+                                driver.describe_table(db, &req.table).await.unwrap_or_default();
+                            let items: Vec<(String, Option<String>)> =
+                                cols.into_iter().map(|c| (c.name, c.comment)).collect();
+                            let table_comment = match db {
+                                Some(owner) => driver
+                                    .query_text(
+                                        "SELECT comments FROM all_tab_comments WHERE owner = :1 AND table_name = :2",
+                                        &[owner.to_string(), req.table.clone()],
+                                        0,
+                                    )
+                                    .await
+                                    .ok(),
+                                None => driver
+                                    .query_text(
+                                        "SELECT comments FROM user_tab_comments WHERE table_name = :1",
+                                        &[req.table.clone()],
+                                        0,
+                                    )
+                                    .await
+                                    .ok(),
+                            };
+                            ddl = crate::db::dialect::append_comment_statements(
+                                &ddl,
+                                &qualified,
+                                table_comment.as_deref(),
+                                &items,
+                                dialect.as_ref(),
+                            );
+                        }
+                        ddl
                     }
                     DdlStrategy::FromColumns => {
                         let cols = driver.describe_table(db, &req.table).await?;

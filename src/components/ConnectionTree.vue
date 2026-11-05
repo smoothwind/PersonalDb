@@ -1286,8 +1286,12 @@ async function onMenuGenDdl(): Promise<void> {
   try {
     let ddl = await dbFetchTableDdl(ctx.sessionId, ctx.database, ctx.table)
     const b = prefsStore.sqlGen
-    if (b.stripQualifier || b.stripStorage) {
-      ddl = cleanDdl(ddl, ctx.kind, { stripQualifier: b.stripQualifier, stripStorage: b.stripStorage })
+    if (b.ddlStripSchema || b.ddlStripQuote || b.stripStorage) {
+      ddl = cleanDdl(ddl, ctx.kind, {
+        stripSchema: b.ddlStripSchema,
+        stripQuote: b.ddlStripQuote,
+        stripStorage: b.stripStorage,
+      })
     }
     if (b.identifierCase !== 'original') {
       ddl = convertOutsideLiterals(ddl, b.identifierCase)

@@ -412,6 +412,20 @@
               />
               <div class="hint-line">{{ t('settings.sqlGenStripStorageHint') }}</div>
             </el-form-item>
+            <el-form-item :label="t('settings.sqlGenDdlStripSchema')">
+              <el-switch
+                :model-value="prefs.sqlGen.ddlStripSchema"
+                @update:model-value="(v: string | number | boolean) => prefs.updateSqlGen({ ddlStripSchema: Boolean(v) })"
+              />
+              <div class="hint-line">{{ t('settings.sqlGenDdlStripSchemaHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('settings.sqlGenDdlStripQuote')">
+              <el-switch
+                :model-value="prefs.sqlGen.ddlStripQuote"
+                @update:model-value="(v: string | number | boolean) => prefs.updateSqlGen({ ddlStripQuote: Boolean(v) })"
+              />
+              <div class="hint-line">{{ t('settings.sqlGenDdlStripQuoteHint') }}</div>
+            </el-form-item>
           </el-form>
         </template>
 

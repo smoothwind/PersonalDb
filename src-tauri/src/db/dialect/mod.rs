@@ -99,6 +99,11 @@ pub trait SqlDialect: Send + Sync {
     /// 字符串字面量转义（含引号策略）
     fn quote_string(&self, s: &str) -> String;
 
+    /// DDL 获取后是否需要客户端追加 COMMENT ON 注释语句（Oracle 系 GET_DDL 默认不含注释）
+    fn ddl_comment_append(&self) -> bool {
+        false
+    }
+
     /// 值 → SQL 字面量（导出 INSERT 用；日期/二进制/布尔按方言函数包装）
     fn literal(&self, v: &CellValue, semantic: SemanticType) -> String;
 
@@ -276,6 +281,33 @@ pub use postgresql::PostgresDialect;
 pub use sqlite::SqliteDialect;
 
 /// 方言工厂（注册表：新增数据库在此追加一条）
+/// DDL 尾部追加 COMMENT ON TABLE/COLUMN 语句（Oracle 系 GET_DDL 默认不含注释，客户端拼接补齐）
+pub fn append_comment_statements(
+    ddl: &str,
+    qualified: &str,
+    table_comment: Option<&str>,
+    columns: &[(String, Option<String>)],
+    dialect: &dyn SqlDialect,
+) -> String {
+    let mut out = ddl.trim_end().to_string();
+    if let Some(c) = table_comment.filter(|c| !c.trim().is_empty()) {
+        out.push_str(&format!(
+            "\n\nCOMMENT ON TABLE {qualified} IS {};",
+            dialect.quote_string(c)
+        ));
+    }
+    for (name, comment) in columns {
+        if let Some(c) = comment.as_deref().filter(|c| !c.trim().is_empty()) {
+            out.push_str(&format!(
+                "\nCOMMENT ON COLUMN {qualified}.{} IS {};",
+                dialect.quote_ident(name),
+                dialect.quote_string(c)
+            ));
+        }
+    }
+    out
+}
+
 pub fn build(kind: DbKind) -> DbResult<Arc<dyn SqlDialect>> {
     match kind {
         DbKind::MySql => Ok(Arc::new(MySqlFamilyDialect::mysql())),

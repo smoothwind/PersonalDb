@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanDdl, stripQualifier, stripStorage } from '../src/utils/ddlClean'
+import { cleanDdl, stripQualifier, stripSchemaPrefix, stripQuoteMarks, stripStorage } from '../src/utils/ddlClean'
 
 describe('cleanDdl：去除存储相关（stripStorage）', () => {
   it('Oracle：STORAGE/TABLESPACE/PCTFREE/SEGMENT CREATION/LOGGING 等全部去除', () => {
@@ -39,17 +39,36 @@ describe('cleanDdl：去除存储相关（stripStorage）', () => {
   })
 })
 
-describe('cleanDdl：去除限定符（stripQualifier）', () => {
-  it('双引号 / 反引号 / 方括号 / 裸 schema 前缀全部去除并去引号', () => {
+describe('cleanDdl：schema 前缀与标识符引号独立开关', () => {
+  it('stripSchemaPrefix：双引号 / 反引号 / 方括号 / 裸 schema 前缀去除，引号保留', () => {
+    expect(stripSchemaPrefix('"SCHEMA"."T"')).toBe('"T"')
+    expect(stripSchemaPrefix('`db`.`t`')).toBe('`t`')
+    expect(stripSchemaPrefix('[dbo].[user]')).toBe('[user]')
+    expect(stripSchemaPrefix('CREATE TABLE s.t (a INT)')).toBe('CREATE TABLE t (a INT)')
+  })
+
+  it('stripQuoteMarks：仅去引号，schema 前缀保留', () => {
+    expect(stripQuoteMarks('"SCHEMA"."T"')).toBe('SCHEMA.T')
+    expect(stripQuoteMarks('`db`.`t`')).toBe('db.t')
+    expect(stripQuoteMarks('[dbo].[user]')).toBe('dbo.user')
+  })
+
+  it('独立组合：只去引号 / 只去 schema / 两者都开', () => {
+    const ddl = 'CREATE TABLE "S"."T" (a INT)'
+    expect(cleanDdl(ddl, 'oracle', { stripQuote: true })).toBe('CREATE TABLE S.T (a INT)')
+    expect(cleanDdl(ddl, 'oracle', { stripSchema: true })).toBe('CREATE TABLE "T" (a INT)')
+    expect(cleanDdl(ddl, 'oracle', { stripSchema: true, stripQuote: true })).toBe('CREATE TABLE T (a INT)')
+  })
+
+  it('兼容旧参数 stripQualifier（= schema + quote）', () => {
+    const ddl = 'CREATE TABLE "S"."T" (a INT) TABLESPACE x'
+    expect(cleanDdl(ddl, 'oracle', { stripQualifier: true })).toBe(cleanDdl(ddl, 'oracle', { stripSchema: true, stripQuote: true }))
     expect(stripQualifier('"SCHEMA"."T"')).toBe('T')
-    expect(stripQualifier('`db`.`t`')).toBe('t')
-    expect(stripQualifier('[dbo].[user]')).toBe('user')
-    expect(stripQualifier('CREATE TABLE s.t (a INT)')).toBe('CREATE TABLE t (a INT)')
   })
 
   it('组合：限定符 + 存储 + 空白归一', () => {
     const ddl = 'CREATE TABLE "S"."T" (\n  "A"  VARCHAR2(10)\n)  TABLESPACE  "USERS" ;'
-    const out = cleanDdl(ddl, 'oracle', { stripQualifier: true, stripStorage: true })
+    const out = cleanDdl(ddl, 'oracle', { stripSchema: true, stripQuote: true, stripStorage: true })
     expect(out).not.toContain('"S"')
     expect(out).not.toContain('TABLESPACE')
     expect(out).toContain('CREATE TABLE T (')
@@ -57,5 +76,6 @@ describe('cleanDdl：去除限定符（stripQualifier）', () => {
 
   it('默认不清洗（{} 选项）', () => {
     expect(cleanDdl('CREATE TABLE t (a INT) TABLESPACE x', 'oracle', {})).toContain('TABLESPACE')
+    expect(cleanDdl('CREATE TABLE "S"."T" (a INT)', 'oracle', {})).toContain('"S"."T"')
   })
 })

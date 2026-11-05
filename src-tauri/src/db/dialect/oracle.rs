@@ -341,6 +341,11 @@ impl SqlDialect for OracleDialect {
         "SET DEFINE OFF;\n\n"
     }
 
+    fn ddl_comment_append(&self) -> bool {
+        // GET_DDL 默认不导出注释（COMMENT transform OFF），由调用方拼接 COMMENT ON 语句
+        true
+    }
+
     fn table_ddl_strategy(&self, schema: Option<&str>, table: &str) -> DdlStrategy {
         match schema.filter(|s| !s.is_empty()) {
             Some(owner) => DdlStrategy::Query(DdlQuery {
