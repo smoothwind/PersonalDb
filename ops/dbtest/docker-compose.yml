@@ -33,7 +33,10 @@
 # |----------|----------------|-----------|------|---------------|----------------|-----------------|
 # | MY       | MySQL          | localhost | 3306 | pdbtest       | pdbtest        | pdbtest         |
 # | PG       | PostgreSQL     | localhost | 5432 | postgres      | postgres       | 留空（默认连 postgres；树列表=schema） |
-# | GA       | GaussDB        | localhost | 5433 | gaussdb       | Gauss@123      | 留空            |
+# | GA       | GaussDB        | localhost | 5433 | gaussdb       | Gauss@456      | 留空            |
+# |          |   （openGauss 5.x 默认 sha256 与 tokio-gaussdb SASL 不兼容，须先跑
+# |          |     ops/dbtest/gauss-auth.sh 切 md5 并重置密码——openGauss 禁止与旧值
+# |          |     相同的重置，故新密码为 Gauss@456 而非首启的 Gauss@123）|
 # | ORA      | Oracle         | localhost | 1521 | test          | test           | service_name=FREEPDB1 |
 # | OBM      | OceanBase      | localhost | 2881 | root@test     | obroot         | 留空            |
 # | OBO      | —（见下方说明） | — | — | — | — | — |

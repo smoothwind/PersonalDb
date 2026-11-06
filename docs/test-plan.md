@@ -320,9 +320,17 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | 文件 | 覆盖 | 启用方式 |
 |---|---|---|
 | `sqlite_integration.rs` | SQLite 全链路（自建临时库，无需实例） | `cargo test --test sqlite_integration` |
-| `mysql_integration.rs` | MySQL 全链路：库上下文/特殊标识符反引号/COMMENT 透传/索引列序/五类对象目录/SHOW CREATE DDL/快照/预览读取（中文·引号反斜杠·二进制·NULL·JSON·日期）/DML 触发器/max_rows/EXPLAIN JSON 计划树/手动事务/INSERT 转义往返/例程元数据+CALL 副作用/ping/持久性 | `$env:PDB_IT_MYSQL="127.0.0.1:3306:root:root:pdbtest"` + `cargo test --test mysql_integration`（容器 `only.sh mysql` 启动后） |
+| `mysql_integration.rs` | MySQL 全链路：库上下文/反引号标识符/COMMENT/索引列序/对象目录/DDL/快照/读取/DML+触发器/计划树/事务/转义/例程 OUT 探针/ping/持久性 | `$env:PDB_IT_MYSQL="127.0.0.1:3306:root:root:pdbtest"`（容器 `only.sh mysql`） |
+| `pg_integration.rs` | PostgreSQL 全链路：默认 postgres 库/schema 上下文/双引号标识符/序列目录（含 SERIAL 隐式）/NUMERIC·BYTEA·JSONB/计划树/事务/PG 反斜杠往返 | `$env:PDB_IT_PG="127.0.0.1:5432:postgres:postgres"`（`only.sh pg`） |
+| `obm_integration.rs` | OB MySQL 模式：tenant 连接/OB 方言契约（锁视图 None）/OUT 回显回归/DDL/触发器/事务 | `$env:PDB_IT_OBM="127.0.0.1:2881:root@test:obroot:test"`（`only.sh ob` + `ob-init.sh`） |
+| `oracle_integration.rs` | Oracle（oracle-bridge）：service_name/注释透传/GET_DDL+COMMENT ON 附加/NUMBER·DATE·BLOB/能力契约/例程 IN-OUT+匿名块 | `$env:PDB_IT_ORACLE="127.0.0.1:1521:test:test:FREEPDB1"`（`only.sh oracle`） |
+| `gauss_integration.rs` | GaussDB/openGauss：sha256→md5 认证修复（`gauss-auth.sh`）/NUMERIC 解码回归/序列 pg_class 兜底/计划树/事务 | `$env:PDB_IT_GAUSS="127.0.0.1:5433:gaussdb:Gauss@456"`（`only.sh gauss`） |
 
-测试库自管理：建 `pdb_it_<uuid>` 独立库，启动时自动清理历史残留，结束自动 DROP。
+**集成测试实测沉淀的驱动事实**（2026-11）：
+- MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）
+- PG/Gauss：二进制协议 → Int 原生；**NUMERIC 需自定义 FromSql 解码**（修复前显示占位符，`postgres.rs#numeric_to_string` PG/Gauss 共用）
+- Oracle 桥接：BLOB 报告为 LONGRAW（semanticOf 须先判 BLOB/RAW 再判 LONG）；describe 须联查 col_comments；NUMBER 经桥接为文本；DATE 含时间成分（semantic=DateTime）
+- openGauss 容器：默认 sha256 存储与 tokio-gaussdb SASL 不兼容（`gauss-auth.sh` 切 md5；密码重置受复用策略限制，现行 Gauss@456）
 
 ### 6.3 前端单测补强建议（纯前端，按收益排序）
 
