@@ -12,7 +12,8 @@ C="$DIR/docker-compose.yml"
 P="${1:?用法: only.sh light|ob|oracle|gauss|all}"
 
 echo "== 停止本项目全部容器（保留数据卷）=="
-docker compose -f "$C" stop
+# 注意：不带 --profile 的 stop 只选中无 profile 的服务（本项目服务全有 profile）
+docker compose -f "$C" --profile all stop
 
 echo "== 启动 [$P] =="
 docker compose -f "$C" --profile "$P" up -d
