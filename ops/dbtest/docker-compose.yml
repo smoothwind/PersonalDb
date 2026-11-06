@@ -1,0 +1,166 @@
+# =============================================================================
+# PersonalDb 本地数据库测试容器（WSL2 + Docker）
+# =============================================================================
+# 用途：为 docs/test-plan.md 全库用例提供本机真实实例（学习/测试用，勿用于生产）。
+# 前置：WSL2（WSL1 不行）+ Docker Desktop（WSL2 后端）或 WSL Ubuntu 内 docker-ce。
+#       Windows 侧应用直连 localhost:端口（WSL2 localhostForwarding 默认开启）。
+#
+# 启动/停止（在 WSL 内）：
+#   cd /mnt/d/CodeRepos/PersonalDb
+#   docker compose -f ops/dbtest/docker-compose.yml --profile light up -d   # MySQL+PG（~1G）
+#   docker compose -f ops/dbtest/docker-compose.yml --profile ob up -d      # OceanBase（~6G，覆盖 OBM+OBO）
+#   docker compose -f ops/dbtest/docker-compose.yml --profile oracle up -d  # Oracle Free（~2G）
+#   docker compose -f ops/dbtest/docker-compose.yml --profile gauss up -d   # openGauss（~1G）
+#   docker compose -f ops/dbtest/docker-compose.yml --profile all up -d     # 全部（~10G，建议 32GB 内存）
+#   ... --profile all down       # 停止（数据保留在命名卷）
+#   ... --profile all down -v    # 停止并清空数据（一键重置）
+#
+# 内存参考：light ≈1G · gauss ≈1G · oracle ≈2G · ob ≈6G（OB_MEMORY_LIMIT 默认 6G）
+# 16GB 物理机建议 ob 与 oracle 不同时开（用 profile 按需启停）；可在
+# %UserProfile%\.wslconfig 里限 VM 总内存，如 [wsl2] memory=10GB。
+# 数据全部走命名卷（WSL ext4，性能远好于 /mnt/d 绑定挂载），down -v 即重置。
+#
+# -----------------------------------------------------------------------------
+# PersonalDb 连接速查（ConnectionForm 填法）
+# -----------------------------------------------------------------------------
+# | 用途     | 库类型选择      | Host      | Port | 用户名        | 密码           | Schema/库       |
+# |----------|----------------|-----------|------|---------------|----------------|-----------------|
+# | MY       | MySQL          | localhost | 3306 | pdbtest       | pdbtest        | pdbtest         |
+# | PG       | PostgreSQL     | localhost | 5432 | postgres      | postgres       | 留空（默认连 postgres；树列表=schema） |
+# | GA       | GaussDB        | localhost | 5433 | gaussdb       | Gauss@123      | 留空            |
+# | ORA      | Oracle         | localhost | 1521 | test          | test           | service_name=FREEPDB1 |
+# | OBM      | OceanBase      | localhost | 2881 | root@test     | obroot         | 留空            |
+# | OBO      | OceanBase Oracle | localhost | 2881 | sys@test_oracle | SysOracle_123 | **必须留空**   |
+#
+# OBO 租户不会自动创建（镜像环境变量只能建 MySQL 租户），首次需手动初始化：
+#   docker exec -i pdb-ob obclient -h127.0.0.1 -P2881 -uroot@sys -psysroot < ops/dbtest/ob-oracle-tenant.sql
+#   # 等租户就绪（约 30s，可 docker logs pdb-ob 观察），再设密码：
+#   docker exec -it pdb-ob obclient -h127.0.0.1 -P2881 -usys@test_oracle -A \
+#     -e "ALTER USER sys IDENTIFIED BY 'SysOracle_123'"
+#
+# SQLite 无需容器（文件型，已有 cargo 集成测试）；JDBC 通用复用上述任意库
+# （内置 OceanBase 预设指向 2881 即可）或纯 jar 数据库（如 H2）。
+# =============================================================================
+
+name: pdb-dbtest
+
+services:
+  # ---- MY：MySQL 8（profiles: mysql / light / all）----
+  mysql:
+    image: mysql:8.0
+    container_name: pdb-mysql
+    profiles: ["mysql", "light", "all"]
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pdbtest
+      MYSQL_USER: pdbtest
+      MYSQL_PASSWORD: pdbtest
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ---- PG：PostgreSQL 16（profiles: pg / light / all）----
+  postgres:
+    image: postgres:16
+    container_name: pdb-pg
+    profiles: ["pg", "light", "all"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pdbtest
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pdbtest"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---- GA：openGauss 5.x（profiles: gauss / all）----
+  # 5.x 默认 password_encryption_type=2（sha256），与 tokio-gaussdb 匹配；勿换 2.x 镜像。
+  # 官方镜像要求 privileged（内核参数自检）；端口错开到 5433 避免与 PG 冲突。
+  opengauss:
+    image: opengauss/opengauss:5.0.0
+    container_name: pdb-gauss
+    profiles: ["gauss", "all"]
+    privileged: true
+    ports:
+      - "5433:5432"
+    environment:
+      GS_PASSWORD: "Gauss@123"
+    volumes:
+      - gauss_data:/var/lib/opengauss
+    healthcheck:
+      # openGauss 无 pg_isready；用 bash /dev/tcp 探端口（免认证，镜像自带 bash）
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # ---- ORA：Oracle Free 23ai（profiles: oracle / all）----
+  # gvenzl 官方社区镜像；APP_USER 自动建在 FREEPDB1（PDB）里。
+  # 应用连接走内置 oracle-bridge（go-ora），Windows 侧无需任何 OCI 客户端。
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: pdb-oracle
+    profiles: ["oracle", "all"]
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle
+      APP_USER: test
+      APP_USER_PASSWORD: test
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "/opt/oracle/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+
+  # ---- OBM + OBO：OceanBase CE 4.x 单机（profiles: ob / all）----
+  # MODE=MINI 最小资源档；自动建 MySQL 租户 test（OBM 直连）。
+  # Oracle 模式租户需手动初始化：见文件头「OBO 租户初始化」或 ob-oracle-tenant.sql。
+  # 首次 bootstrap 约 2~5 分钟，docker logs pdb-ob 出现 boot success! 才可连。
+  # 镜像拉取失败可换 quay.io/oceanbase/oceanbase-ce 或 ghcr.io/oceanbase/oceanbase-ce。
+  oceanbase:
+    image: oceanbase/oceanbase-ce:latest
+    container_name: pdb-ob
+    profiles: ["ob", "all"]
+    ports:
+      - "2881:2881"
+    environment:
+      MODE: MINI
+      OB_SYS_PASSWORD: sysroot
+      OB_TENANT_PASSWORD: obroot
+      # MINI 档保持默认：OB_MEMORY_LIMIT=6G / DATAFILE 5G / LOG_DISK 5G
+    volumes:
+      - ob_data:/root/ob
+      - ob_obd:/root/.obd/cluster
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "obclient -h127.0.0.1 -P2881 -uroot@test -p$$OB_TENANT_PASSWORD -e 'SELECT 1'"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 420s
+
+volumes:
+  mysql_data:
+  pg_data:
+  gauss_data:
+  oracle_data:
+  ob_data:
+  ob_obd:

@@ -22,6 +22,8 @@
 
 环境准备建议：每个库各建一张含**全类型列**的样表（数值/字符/日期/二进制/CLOB·TEXT/JSON 视版本）+ 一组带注释的表 + 一组含 IN/OUT 参数的存储过程与函数（参数覆盖 NUMBER/VARCHAR2/DATE/无参/多参）。
 
+> **本机容器方案（可选）**：无实例环境可用 WSL2 + Docker 拉起全部 7 类服务端库（OB 一个容器覆盖 OBM+OBO 两种模式，SQLite 无需容器，JDBC 复用任意容器）：`ops/dbtest/docker-compose.yml`（profiles: `light`/`ob`/`oracle`/`gauss`/`all` 按需启停，含 healthcheck 与连接速查注释）；OB Oracle 租户首次需手工初始化 `ops/dbtest/ob-oracle-tenant.sql`。OB CE 镜像约需 6G 内存档，16GB 机器建议 `ob` 与 `oracle` profile 分时启停。
+
 ---
 
 ## 2. 能力差异矩阵（功能显隐依据）
