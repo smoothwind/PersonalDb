@@ -6,7 +6,13 @@
 #       Windows 侧应用直连 localhost:端口（WSL2 localhostForwarding 默认开启）。
 #
 # 启动/停止（在 WSL 内）：
-#   cd /mnt/d/CodeRepos/PersonalDb
+#   ⭐ 推荐单库轮测（一次只挂一个库，测完切下一个，数据卷保留）：
+#     wsl -d Ubuntu-24.04 -u root -- bash ops/dbtest/only.sh light    # MySQL+PG
+#     wsl -d Ubuntu-24.04 -u root -- bash ops/dbtest/only.sh ob       # OceanBase(OBM)
+#     wsl -d Ubuntu-24.04 -u root -- bash ops/dbtest/only.sh oracle   # Oracle Free
+#     wsl -d Ubuntu-24.04 -u root -- bash ops/dbtest/only.sh gauss    # openGauss
+#   （only.sh = stop 全部 + up 指定 profile + 显示状态）
+#   手动等价命令：
 #   docker compose -f ops/dbtest/docker-compose.yml --profile light up -d   # MySQL+PG（~1G）
 #   docker compose -f ops/dbtest/docker-compose.yml --profile ob up -d      # OceanBase（~6G，覆盖 OBM；OBO 需企业版）
 #   docker compose -f ops/dbtest/docker-compose.yml --profile oracle up -d  # Oracle Free（~2G）
