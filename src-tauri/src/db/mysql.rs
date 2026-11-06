@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mysql_async::prelude::*;
-use mysql_async::{Conn, OptsBuilder, Row, Value};
+use mysql_async::{Conn, OptsBuilder, PoolConstraints, PoolOpts, Row, Value};
 
 use crate::db::templates;
 use crate::error::{AppError, DbResult};
@@ -51,8 +51,17 @@ impl MySqlDriver {
         if let Some(db) = default_db.clone() {
             builder = builder.db_name(Some(db));
         }
+        // 池固定单连接 + 关闭归还重置：会话状态（用户变量 @x / SET / 临时表）跨 execute
+        // 必须可靠——MySQL 例程 OUT 回显（@pdb_a*，SPEC-ROUTINE-1）依赖此语义。
+        // mysql_async 默认 reset_connection=true 会在连接归还时清用户变量/会话变量/临时表，
+        // 多连接轮换则直接换连接，两者都会让 OUT 回显拿到 NULL（集成测试 mysql_integration
+        // 探针实锤）。GUI 为单用户串行负载，单连接无并发损失；手动事务期间其他查询
+        // 排队至事务结束（事务模式本就是显式串行工作流）。
+        let pool_opts = PoolOpts::default()
+            .with_constraints(PoolConstraints::new(1, 1).expect("pool constraints 1..=1"))
+            .with_reset_connection(false);
         Ok(Self {
-            pool: mysql_async::Pool::new(builder),
+            pool: mysql_async::Pool::new(builder.pool_opts(pool_opts)),
             default_db,
             kind: cfg.kind,
             manual: AtomicBool::new(false),

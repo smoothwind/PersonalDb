@@ -110,6 +110,8 @@
   | mysql / oceanbase | `SELECT s.f(args)` | `CALL s.p(args)` | `CALL p(..., @pdb_a{n})` + 追加 `SELECT @pdb_a{n} AS ...`（同会话多语句，**输出值回显**为第二个结果集） |
   | postgresql / gaussdb | `SELECT f(args)` | `CALL p(args)`（PG11+） | OUT 位 NULL 占位 + toast 提示；INOUT 传值 |
 
+  MySQL 系 OUT 回显依赖**会话变量跨 execute 可见**——`mysql.rs` 连接池固定单连接（`PoolConstraints(1,1)`）且 `reset_connection=false`（mysql_async 默认归还时清用户变量，2026-11 集成测试实锤后修复）；多语句拆分后逐条 execute 落在同一连接，回显可靠。
+
 - **参数字面量**（`routineArgLiteral`）：NULL 勾选或留空 → `NULL`（最高优先）；原样勾选 → 原文内联（表达式/日期函数逃生门）；纯数字 → 数值原样；其余 → 方言字符串字面量（单引号翻倍，MySQL 系另转义反斜杠与会话 `dml_literal` 约定一致）。
 - **PL 声明类型归一化**（2026-11 修复 OB ORA-00600）：`all_arguments.data_type` 是裸类型名（无长度），裸字符类型声明标准 Oracle 报 PLS-00215、OB Oracle 报 `ORA-00600 [-5544, Undeclared type: VARCHAR2]` → `plDeclType` 对 `VARCHAR2/NVARCHAR2/VARCHAR/CHAR/NCHAR` 补 `(32767)`、`RAW` 补 `(2000)`（OUT 实参缓冲区放大是 PL 合法语义）；带长度/其它类型原样。
 - **已知限制（P2 登记）**：① Oracle 系 OUT 回显需桥接协议扩展（CallableStatement `registerOutParameter`）；② 危险操作检测按语句关键字，`CALL` 内部风险不感知（不触发 SPEC-SAFE-1 拦截）。

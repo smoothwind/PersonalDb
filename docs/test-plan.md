@@ -313,7 +313,18 @@
 
 Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强制 check:i18n。
 
-### 6.2 补强建议（纯前端单测，按收益排序）
+### 6.2 Rust 真实引擎集成测试（零 mock，env 门控）
+
+`src-tauri/tests/`（模式：`create_driver` 工厂 + 全链路断言；未设置环境变量自动跳过，CI 安全）：
+
+| 文件 | 覆盖 | 启用方式 |
+|---|---|---|
+| `sqlite_integration.rs` | SQLite 全链路（自建临时库，无需实例） | `cargo test --test sqlite_integration` |
+| `mysql_integration.rs` | MySQL 全链路：库上下文/特殊标识符反引号/COMMENT 透传/索引列序/五类对象目录/SHOW CREATE DDL/快照/预览读取（中文·引号反斜杠·二进制·NULL·JSON·日期）/DML 触发器/max_rows/EXPLAIN JSON 计划树/手动事务/INSERT 转义往返/例程元数据+CALL 副作用/ping/持久性 | `$env:PDB_IT_MYSQL="127.0.0.1:3306:root:root:pdbtest"` + `cargo test --test mysql_integration`（容器 `only.sh mysql` 启动后） |
+
+测试库自管理：建 `pdb_it_<uuid>` 独立库，启动时自动清理历史残留，结束自动 DROP。
+
+### 6.3 前端单测补强建议（纯前端，按收益排序）
 
 1. **routineExec 字符串转义边界**：多行字符串/引号混用/超长输入（补 routine-exec.spec）
 2. **sqlTitle 块体回退分支**：DECLARE 无 BEGIN / 嵌套块标记（补 logs-title.spec）
