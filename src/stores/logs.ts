@@ -40,6 +40,12 @@ export function sqlTitle(sql: string, count?: number): string {
     : base
 }
 
+/** 多语句逐条日志标题：第 {i}/{n} 条 · 摘要（SPEC-LOG-3：每条语句必须独立入栈） */
+export function sqlStmtTitle(sql: string, index: number, total: number): string {
+  const base = sqlTitle(sql)
+  return i18n.global.t('logs.stmtPrefix', { i: index, n: total, summary: base })
+}
+
 /** 日志面板数据源：SQL 执行成败 / 连接事件统一入栈 */
 export const useLogStore = defineStore('logs', () => {
   const entries = ref<LogEntry[]>([])

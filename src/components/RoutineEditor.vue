@@ -104,6 +104,10 @@
         </el-tooltip>
         <el-checkbox v-model="stripSchema" size="small" :disabled="!editMode">{{ t('settings.sqlGenDdlStripSchema') }}</el-checkbox>
         <span class="pt-sep" />
+        <el-button size="small" :disabled="!info" @click="execVisible = true">
+          <el-icon><component :is="objectIcon('act_run')" /></el-icon>
+          {{ t('routine.exec') }}
+        </el-button>
         <el-button size="small" :icon="Document" @click="openInQuery">
           {{ t('inspector.openInQuery') }}
         </el-button>
@@ -128,6 +132,15 @@
 
       <div v-if="saveResult" class="rt-save-result">{{ saveResult }}</div>
     </div>
+
+    <!-- 例程执行参数对话框（SPEC-ROUTINE-1）：确认后开查询页签自动执行 -->
+    <RoutineExecDialog
+      v-model="execVisible"
+      :kind="tab.kind"
+      :routine="info"
+      :schema="tab.database"
+      @run="onExecRun"
+    />
   </div>
 </template>
 
@@ -144,6 +157,7 @@ import {
 } from '@element-plus/icons-vue'
 import SqlEditor from './SqlEditor.vue'
 import EmptyState from './EmptyState.vue'
+import RoutineExecDialog from './RoutineExecDialog.vue'
 import { objectIcon } from '../utils/objectIcons'
 import { dbDescribeRoutine, dbExecute, dbFetchObjectDdl } from '../api/db'
 import { useConnectionStore } from '../stores/connections'
@@ -154,6 +168,7 @@ import { stripSchemaPrefix } from '../utils/ddlClean'
 import { useSnippetStore } from '../stores/snippets'
 import { useTabsStore, type QueryTab } from '../stores/tabs'
 import type { RoutineInfo } from '../types/db'
+import type { RoutineCallSql } from '../utils/routineExec'
 
 /** 例程（存储过程 / 函数）编辑面板（Tab 形式：参数 + 可编辑源码 + 保存） */
 const props = defineProps<{ tab: QueryTab }>()
@@ -261,6 +276,23 @@ async function save(): Promise<void> {
 
 async function copySource(): Promise<void> {  await navigator.clipboard.writeText(source.value)
   ElMessage.success(t('cell.copied'))
+}
+
+/** 例程执行（SPEC-ROUTINE-1）：参数对话框 → 方言调用 SQL → 查询页签自动运行 */
+const execVisible = ref(false)
+
+function onExecRun(call: RoutineCallSql): void {
+  const tab = tabsStore.openTab({
+    connectionId: props.tab.connectionId,
+    connectionName: props.tab.connectionName,
+    kind: props.tab.kind,
+    database: props.tab.database,
+    title: info.value?.name ?? props.tab.objectName ?? t('routine.tabTitle'),
+    sql: call.sql,
+    icon: info.value?.routineType === 'FUNCTION' ? 'function' : 'procedure',
+    force: true,
+  })
+  void tabsStore.runTab(tab)
 }
 
 function openInQuery(): void {

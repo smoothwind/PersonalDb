@@ -1,7 +1,7 @@
 # PersonalDb 功能规约（UI / 编辑器 / 结果集 / 浏览器）
 
 > 本文件为长期维护的功能规约，与 `AGENTS.md` 配合。新增或修改相关功能前先阅读对应条目；实现变更后同步修订本文。
-> 编号规则：`SPEC-<域>-<序号>`，域：UI / EDITOR / RESULT / TREE / PREFS / I18N / TX / CONN / SESSION / STORAGE / WORKSPACE / LOG / DEV / SAFE / TEMPLATE。
+> 编号规则：`SPEC-<域>-<序号>`，域：UI / EDITOR / RESULT / TREE / PREFS / I18N / TX / CONN / SESSION / STORAGE / WORKSPACE / LOG / DEV / SAFE / TEMPLATE / ROUTINE。
 > 流程总纲：**所有 BUG / Feature / 性能优化一律先提案、批准后实施**（见 SPEC-DEV-3）。
 
 ## SPEC-UI-1 结果集紧凑布局
@@ -93,9 +93,26 @@
   - 右键函数/过程节点「编辑例程」打开**例程编辑 Tab**；
   - 头部显示名称、方言、类型（FUNCTION/PROCEDURE）与函数返回类型；
   - **参数面板**（可折叠）：序号/名称/模式（IN/OUT/INOUT）/数据类型，无参数时提示；
-  - 源码区为**可编辑**编辑器（CM6，含方言高亮/快捷指令/快捷键）；操作：刷新、复制、在新查询中打开、**保存**（执行源码并重新加载）；
+  - 源码区为**可编辑**编辑器（CM6，含方言高亮/快捷指令/快捷键）；操作：刷新、复制、**执行**（见 SPEC-ROUTINE-1）、在新查询中打开、**保存**（执行源码并重新加载）；
   - 按连接+库+例程名去重；元数据来自 `db_describe_routine`。
 - **落点**：`components/RoutineEditor.vue`（Tab 面板）、`stores/tabs.ts#openRoutineEditor`、Rust `db_describe_routine`。
+
+## SPEC-ROUTINE-1 例程执行（存储过程 / 函数，全方言）
+
+- **需求**：支持一键执行各数据库的存储过程与函数（SQLite 无例程能力自然排除；覆盖 mysql/oceanbase、postgresql/gaussdb、oracle/oceanbase-oracle 六种库）。
+- **入口**：① 连接树右键例程节点首项「执行」（`act_run` 图标）；② 例程编辑 Tab 工具栏「执行」（需元数据已加载）。
+- **流程**：入口 → 参数对话框 `RoutineExecDialog.vue`（名称/模式/类型/值 + NULL 复选 + 原样复选；无参数时直接提示可执行）→ 确认生成方言调用 SQL → **打开查询页签（force 新建）并自动 `runTab`**——执行类动作需展示结果集（多结果集/导出/虚拟滚动复用查询页签管线），不受「生成 SQL 只复制不开页签」约束（该约束仅限 genSql 类）。
+- **方言调用 SQL**（`utils/routineExec.ts#buildRoutineCallSql`，纯函数 + 单测）：
+
+  | 库 | 函数 | 过程（无 OUT） | 过程（含 OUT/INOUT） |
+  |---|---|---|---|
+  | oracle / oceanbase-oracle | `SELECT s.f(args) FROM DUAL` | 匿名块 `BEGIN s.p(args); END;` | 匿名块 `DECLARE` 本地变量 `pdb_a{n}`（INOUT 以输入值初始化），执行副作用生效但**输出值不回显**（toast 提示） |
+  | mysql / oceanbase | `SELECT s.f(args)` | `CALL s.p(args)` | `CALL p(..., @pdb_a{n})` + 追加 `SELECT @pdb_a{n} AS ...`（同会话多语句，**输出值回显**为第二个结果集） |
+  | postgresql / gaussdb | `SELECT f(args)` | `CALL p(args)`（PG11+） | OUT 位 NULL 占位 + toast 提示；INOUT 传值 |
+
+- **参数字面量**（`routineArgLiteral`）：NULL 勾选或留空 → `NULL`（最高优先）；原样勾选 → 原文内联（表达式/日期函数逃生门）；纯数字 → 数值原样；其余 → 方言字符串字面量（单引号翻倍，MySQL 系另转义反斜杠与会话 `dml_literal` 约定一致）。
+- **已知限制（P2 登记）**：① Oracle 系 OUT 回显需桥接协议扩展（CallableStatement `registerOutParameter`）；② 危险操作检测按语句关键字，`CALL` 内部风险不感知（不触发 SPEC-SAFE-1 拦截）。
+- **落点**：`utils/routineExec.ts`、`components/RoutineExecDialog.vue`、`ConnectionTree.vue`（execRoutine 菜单 + onMenuExecRoutine/onExecRun）、`RoutineEditor.vue`（工具栏按钮）、`tests/routine-exec.spec.ts`。
 - **需求**：结果集表格支持斑马纹、行高设定、列拖拽排序、固定列、筛选、查找、排序。
 - **验收**：
 
@@ -394,10 +411,10 @@
 - **验收**：
   - 位置：**默认吸附于主区下边框**（状态栏上方），顶部边缘可拖拽调高（120~480px，持久化 `personaldb.ui#logPanelHeight`）；显隐持久化 `personaldb.ui#logPanelVisible`（默认开）；
   - 入口：「查看 → 日志面板」（Ctrl+L，可改键）、状态栏「日志」切换（含**未读错误徽标**：面板关闭期间每条 error 计数，打开清零）；
-  - 内容：SQL 执行（成功 info：SQL 摘要/行数/耗时；失败 error：附完整错误详情）、多语句（部分失败 warn）、分页续拉失败、连接打开/断开/丢失/重连失败（连接事件与 SQL 失败去重防刷屏：`markLost` 重复标记静默）；
+  - 内容：SQL 执行（成功 info：SQL 摘要/行数/耗时；失败 error：附完整错误详情）、**多语句逐条入栈**（2026-11 修订：每条语句独立一条日志，title=`第 {i}/{n} 条 · 摘要`（`logs.stmtPrefix`），含该语句独立耗时/行数，失败条目 error 级附错误详情；不再推聚合条目，整段 SQL 仍由查询历史保留）、分页续拉失败、连接打开/断开/丢失/重连失败（连接事件与 SQL 失败去重防刷屏：`markLost` 重复标记静默）；
   - 交互：级别过滤（全部/错误/警告/信息）、自动滚动（上翻则暂停贴底）、点击行展开/收起完整详情、清空、收起面板；
   - 存储：**会话内存环形缓冲，上限 1000 条，不落盘**（SQL 历史持久化仍由查询历史 SQLite 负责）。
-- **落点**：`stores/logs.ts`（`useLogStore`：entries/unreadErrors/push/markOpened/clear、`sqlTitle` 摘要）、`components/LogPanel.vue`、数据源接线 `stores/tabs.ts`（runTab 成败/多语句/重连/分页）、`stores/connections.ts`（open/close/markLost/reconnect）、`QueryTabPane.vue`（结果集编辑应用失败）、`App.vue`（挂载/菜单/状态栏/快捷键）、`utils/shortcuts.ts`（toggleLogPanel）。
+- **落点**：`stores/logs.ts`（`useLogStore`：entries/unreadErrors/push/markOpened/clear、`sqlTitle` 摘要、`sqlStmtTitle` 逐条标题）、`components/LogPanel.vue`、数据源接线 `stores/tabs.ts`（runTab 成败/多语句/重连/分页）、`stores/connections.ts`（open/close/markLost/reconnect）、`QueryTabPane.vue`（结果集编辑应用失败）、`App.vue`（挂载/菜单/状态栏/快捷键）、`utils/shortcuts.ts`（toggleLogPanel）。
 
 ## SPEC-UI-23 工作台可停靠布局（拖拽重排 / 悬浮层叠）
 

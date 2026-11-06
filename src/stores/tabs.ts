@@ -7,7 +7,7 @@ import { useConnectionStore } from './connections'
 import { useHistoryStore } from './history'
 import { usePreferencesStore } from './preferences'
 import { useSqlTemplatesStore } from './sqlTemplates'
-import { useLogStore, sqlTitle } from './logs'
+import { useLogStore, sqlStmtTitle, sqlTitle } from './logs'
 import { useDangerStore } from './danger'
 import { logger } from '../utils/logger'
 import { pagedSql, previewSelectSql } from '../utils/sqlTemplates'
@@ -272,19 +272,39 @@ export const useTabsStore = defineStore('tabs', () => {
     let firstErr = ''
     let timedOut = false
     let failedAt = 0
+    // SPEC-LOG-3：多语句逐条日志——每条语句无论成败均独立入栈（含独立耗时/行数），
+    // 失败条目 error 级并附错误详情；不再推聚合条目（整段 SQL 仍由 history 保留）
     for (let i = 0; i < stmts.length; i++) {
       if (seq !== tab.runSeq) return
+      const stmtStart = Date.now()
       try {
         // 与单语句路径一致的超时保护，防止挂起语句阻塞整批
-        results.push(
-          await withExecTimeout(
-            dbExecute(sessionId, tab.database || null, stmts[i], pageSize),
-          ),
+        const r = await withExecTimeout(
+          dbExecute(sessionId, tab.database || null, stmts[i], pageSize),
         )
+        results.push(r)
+        logStore.push({
+          level: 'info',
+          kind: 'sql',
+          title: sqlStmtTitle(stmts[i], i + 1, stmts.length),
+          conn: tab.connectionName,
+          db: tab.database,
+          durationMs: Date.now() - stmtStart,
+          rows: r.rows.length,
+        })
       } catch (e) {
         firstErr = String(e)
         timedOut = e instanceof ExecTimeoutError
         failedAt = i + 1
+        logStore.push({
+          level: 'error',
+          kind: 'sql',
+          title: sqlStmtTitle(stmts[i], i + 1, stmts.length),
+          detail: firstErr,
+          conn: tab.connectionName,
+          db: tab.database,
+          durationMs: Date.now() - stmtStart,
+        })
         break
       }
     }
@@ -294,15 +314,6 @@ export const useTabsStore = defineStore('tabs', () => {
       tab.error = firstErr
       tab.errorKind = timedOut ? 'timeout' : undefined
       if (looksLikeConnError(firstErr)) connStore.markLost(tab.connectionId)
-      logStore.push({
-        level: 'error',
-        kind: 'sql',
-        title: sqlTitle(sqlText, stmts.length),
-        detail: firstErr,
-        conn: tab.connectionName,
-        db: tab.database,
-        durationMs: Date.now() - startedAt,
-      })
       historyStore.push({
         connectionName: tab.connectionName,
         kind: tab.kind,
@@ -321,16 +332,6 @@ export const useTabsStore = defineStore('tabs', () => {
     tab.baseSql = sqlText
     tab.hasMore = false
     if (firstErr) ElMessage.error(tt('query.multiFailAt', { i: failedAt, total: stmts.length, msg: firstErr }))
-    logStore.push({
-      level: firstErr ? 'warn' : 'info',
-      kind: 'sql',
-      title: sqlTitle(sqlText, stmts.length),
-      detail: firstErr || undefined,
-      conn: tab.connectionName,
-      db: tab.database,
-      durationMs: Date.now() - startedAt,
-      rows: results.reduce((n, r) => n + r.rows.length, 0),
-    })
     historyStore.push({
       connectionName: tab.connectionName,
       kind: tab.kind,

@@ -126,6 +126,15 @@
       :table="exportTarget.table"
     />
 
+    <!-- 例程执行参数对话框（SPEC-ROUTINE-1）：确认后开查询页签自动执行 -->
+    <RoutineExecDialog
+      v-model="execVisible"
+      :kind="execCtx.kind"
+      :routine="execRoutine"
+      :schema="execCtx.database"
+      @run="onExecRun"
+    />
+
     <!-- 移动到文件夹（多级缩进展示） -->
     <el-dialog v-model="moveVisible" :title="t('tree.moveToGroup')" width="380px">
       <el-select v-model="moveGroupId" style="width: 100%">
@@ -195,6 +204,7 @@ import {
 import DbLogo from './DbLogo.vue'
 import EmptyState from './EmptyState.vue'
 import ExportDialog from './ExportDialog.vue'
+import RoutineExecDialog from './RoutineExecDialog.vue'
 import ContextMenu, { type CtxMenuItem } from './ContextMenu.vue'
 import { objectIcon } from '../utils/objectIcons'
 import { describeConnError } from '../utils/connError'
@@ -204,6 +214,7 @@ import { useConnectionStore } from '../stores/connections'
 import { useTabsStore } from '../stores/tabs'
 import { usePreferencesStore } from '../stores/preferences'
 import {
+  dbDescribeRoutine,
   dbDescribeTable,
   dbFetchTableDdl,
   dbListObjectFolders,
@@ -214,7 +225,8 @@ import {
 import { buildInsertSql, buildSelectSql, formatColumns, type ColumnFormat } from '../utils/sqlGen'
 import { cleanDdl } from '../utils/ddlClean'
 import { convertOutsideLiterals } from '../utils/sqlCase'
-import type { ConnectionConfig, ConnectionGroup, DbKind, DbObjectType } from '../types/db'
+import type { ConnectionConfig, ConnectionGroup, DbKind, DbObjectType, RoutineInfo } from '../types/db'
+import type { RoutineCallSql } from '../utils/routineExec'
 
 const { t } = useI18n()
 
@@ -370,6 +382,7 @@ const menuItems = computed<CtxMenuItem[]>(() => {
     if (tgt.objType === 'table') push('createTable', t('tree.newTable'), Plus)
   } else if (tgt.nodeType === 'object') {
     const isRoutine = tgt.objType === 'function' || tgt.objType === 'procedure'
+    if (isRoutine) push('execRoutine', t('tree.execRoutine'), objectIcon('act_run'))
     push('objectDdl', isRoutine ? t('tree.editRoutine') : t('tree.viewDefinition'), Document)
     if (tgt.kind === 'oracle' || tgt.kind === 'oceanbase-oracle') push('recompile', t('tree.recompile'), Refresh)
   }
@@ -452,6 +465,9 @@ function onMenuSelect(key: string): void {
     case 'objectDdl':
       onMenuObjectDdl()
       break
+    case 'execRoutine':
+      void onMenuExecRoutine()
+      break
     case 'recompile':
       void onMenuRecompile()
       break
@@ -476,6 +492,61 @@ const exportTarget = ref<{
 const moveVisible = ref(false)
 const moveTarget = ref<ConnectionConfig | null>(null)
 const moveGroupId = ref<string>('')
+
+/** 例程执行对话框状态（SPEC-ROUTINE-1）：树右键「执行」→ 取参数元数据 → 弹窗 → 查询页签执行 */
+const execVisible = ref(false)
+const execRoutine = ref<RoutineInfo | null>(null)
+const execCtx = ref<{ connectionId: string; connectionName: string; kind: DbKind; database: string }>({
+  connectionId: '',
+  connectionName: '',
+  kind: 'mysql',
+  database: '',
+})
+
+async function onMenuExecRoutine(): Promise<void> {
+  const target = menu.target
+  hideMenu()
+  if (target?.nodeType !== 'object') return
+  if (target.objType !== 'function' && target.objType !== 'procedure') return
+  const session = connStore.sessionOf(target.connectionId)
+  if (!session) {
+    ElMessage.warning(t('query.connectionLost'))
+    return
+  }
+  try {
+    const info = await dbDescribeRoutine(
+      session.sessionId,
+      target.database || null,
+      target.label,
+      target.objType,
+    )
+    execCtx.value = {
+      connectionId: target.connectionId,
+      connectionName: connStore.configOf(target.connectionId)?.name ?? '',
+      kind: target.kind,
+      database: target.database || '',
+    }
+    execRoutine.value = info
+    execVisible.value = true
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+/** 例程执行确认：打开查询页签（强制新建，防复用空 Tab 冲突）并自动运行 */
+function onExecRun(call: RoutineCallSql): void {
+  const tab = tabsStore.openTab({
+    connectionId: execCtx.value.connectionId,
+    connectionName: execCtx.value.connectionName,
+    kind: execCtx.value.kind,
+    database: execCtx.value.database,
+    title: execRoutine.value?.name ?? t('routine.tabTitle'),
+    sql: call.sql,
+    icon: execRoutine.value?.routineType === 'FUNCTION' ? 'function' : 'procedure',
+    force: true,
+  })
+  void tabsStore.runTab(tab)
+}
 
 function refresh(): void {
   // 重建前记录已展开节点，重建后恢复，避免刷新导致展开状态丢失
@@ -1239,8 +1310,7 @@ async function onMenuRecompile(): Promise<void> {
 function onMenuObjectDdl(): void {
   const target = menu.target
   hideMenu()
-  if (target?.nodeType !== 'object') return
-  // 存储过程 / 函数 → 例程编辑 Tab
+  if (target?.nodeType !== 'object') return  // 存储过程 / 函数 → 例程编辑 Tab
   if (target.objType === 'function' || target.objType === 'procedure') {
     tabsStore.openRoutineEditor({
       connectionId: target.connectionId,
