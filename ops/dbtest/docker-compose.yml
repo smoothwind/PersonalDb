@@ -8,7 +8,7 @@
 # 启动/停止（在 WSL 内）：
 #   cd /mnt/d/CodeRepos/PersonalDb
 #   docker compose -f ops/dbtest/docker-compose.yml --profile light up -d   # MySQL+PG（~1G）
-#   docker compose -f ops/dbtest/docker-compose.yml --profile ob up -d      # OceanBase（~6G，覆盖 OBM+OBO）
+#   docker compose -f ops/dbtest/docker-compose.yml --profile ob up -d      # OceanBase（~6G，覆盖 OBM；OBO 需企业版）
 #   docker compose -f ops/dbtest/docker-compose.yml --profile oracle up -d  # Oracle Free（~2G）
 #   docker compose -f ops/dbtest/docker-compose.yml --profile gauss up -d   # openGauss（~1G）
 #   docker compose -f ops/dbtest/docker-compose.yml --profile all up -d     # 全部（~10G，建议 32GB 内存）
@@ -30,13 +30,12 @@
 # | GA       | GaussDB        | localhost | 5433 | gaussdb       | Gauss@123      | 留空            |
 # | ORA      | Oracle         | localhost | 1521 | test          | test           | service_name=FREEPDB1 |
 # | OBM      | OceanBase      | localhost | 2881 | root@test     | obroot         | 留空            |
-# | OBO      | OceanBase Oracle | localhost | 2881 | sys@test_oracle | SysOracle_123 | **必须留空**   |
+# | OBO      | —（见下方说明） | — | — | — | — | — |
 #
-# OBO 租户不会自动创建（镜像环境变量只能建 MySQL 租户），首次需手动初始化：
-#   docker exec -i pdb-ob obclient -h127.0.0.1 -P2881 -uroot@sys -psysroot < ops/dbtest/ob-oracle-tenant.sql
-#   # 等租户就绪（约 30s，可 docker logs pdb-ob 观察），再设密码：
-#   docker exec -it pdb-ob obclient -h127.0.0.1 -P2881 -usys@test_oracle -A \
-#     -e "ALTER USER sys IDENTIFIED BY 'SysOracle_123'"
+# OBO（OceanBase Oracle 模式）说明：Oracle 兼容模式是 OceanBase **企业版**特性，
+# 社区版（oceanbase-ce）CREATE TENANT 报 1235 "Not support oracle mode"——
+# 本容器只能覆盖 OBM；OBO 回归测试仍需企业版实例（如公司 10.8.130.103）。
+# ob-oracle-tenant.sql 留档：若容器换企业版镜像，重跑 ob-init.sh 即全自动建租户。
 #
 # SQLite 无需容器（文件型，已有 cargo 集成测试）；JDBC 通用复用上述任意库
 # （内置 OceanBase 预设指向 2881 即可）或纯 jar 数据库（如 H2）。
@@ -49,6 +48,7 @@ services:
   mysql:
     image: mysql:8.0
     container_name: pdb-mysql
+    restart: unless-stopped
     profiles: ["mysql", "light", "all"]
     ports:
       - "3306:3306"
@@ -70,6 +70,7 @@ services:
   postgres:
     image: postgres:16
     container_name: pdb-pg
+    restart: unless-stopped
     profiles: ["pg", "light", "all"]
     ports:
       - "5432:5432"
@@ -91,6 +92,7 @@ services:
   opengauss:
     image: opengauss/opengauss:5.0.0
     container_name: pdb-gauss
+    restart: unless-stopped
     profiles: ["gauss", "all"]
     privileged: true
     ports:
@@ -113,6 +115,7 @@ services:
   oracle:
     image: gvenzl/oracle-free:23-slim
     container_name: pdb-oracle
+    restart: unless-stopped
     profiles: ["oracle", "all"]
     ports:
       - "1521:1521"
@@ -138,6 +141,7 @@ services:
   oceanbase:
     image: oceanbase/oceanbase-ce:latest
     container_name: pdb-ob
+    restart: unless-stopped
     profiles: ["ob", "all"]
     ports:
       - "2881:2881"
@@ -145,10 +149,18 @@ services:
       MODE: MINI
       OB_SYS_PASSWORD: sysroot
       OB_TENANT_PASSWORD: obroot
-      # MINI 档保持默认：OB_MEMORY_LIMIT=6G / DATAFILE 5G / LOG_DISK 5G
+      # bootstrap 用 6G：test 租户自动撑满剩余（3G）；ob-init.sh 起来后在线扩容到 9G
+      # 给 Oracle 租户腾位（unit 内存只增不减，必须从小到大）
+      OB_MEMORY_LIMIT: 6G
+      OB_DATAFILE_SIZE: 8G
+      OB_LOG_DISK_SIZE: 8G
     volumes:
       - ob_data:/root/ob
       - ob_obd:/root/.obd/cluster
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     stop_grace_period: 60s
     healthcheck:
       test: ["CMD-SHELL", "obclient -h127.0.0.1 -P2881 -uroot@test -p$$OB_TENANT_PASSWORD -e 'SELECT 1'"]

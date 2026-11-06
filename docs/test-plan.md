@@ -22,7 +22,7 @@
 
 环境准备建议：每个库各建一张含**全类型列**的样表（数值/字符/日期/二进制/CLOB·TEXT/JSON 视版本）+ 一组带注释的表 + 一组含 IN/OUT 参数的存储过程与函数（参数覆盖 NUMBER/VARCHAR2/DATE/无参/多参）。
 
-> **本机容器方案（可选）**：无实例环境可用 WSL2 + Docker 拉起全部 7 类服务端库（OB 一个容器覆盖 OBM+OBO 两种模式，SQLite 无需容器，JDBC 复用任意容器）：`ops/dbtest/docker-compose.yml`（profiles: `light`/`ob`/`oracle`/`gauss`/`all` 按需启停，含 healthcheck 与连接速查注释）；OB Oracle 租户首次需手工初始化 `ops/dbtest/ob-oracle-tenant.sql`。OB CE 镜像约需 6G 内存档，16GB 机器建议 `ob` 与 `oracle` profile 分时启停。
+> **本机容器方案（可选）**：WSL2 + Docker 拉起服务端库。已验证覆盖：MY、PG、GA、ORA、**OBM**（SQLite 无需容器，JDBC 复用任意容器）。**OBO 不可本地容器化**——Oracle 兼容模式是 OceanBase 企业版特性，社区版 `CREATE TENANT ... ob_compatibility_mode='oracle'` 报 1235，OBO 用例仍依赖企业实例（见第 4.2 节）。入口：`ops/dbtest/docker-compose.yml`（profiles: `light`/`ob`/`oracle`/`gauss`/`all`）+ `ob-init.sh`（内核参数/等待/资源腾挪一键化，含企业版建租户路径）。经验参数：WSL `.wslconfig` 建议 `memory=16GB` + `vmIdleTimeout=-1`（防空闲关机杀容器）；OB 容器需 `ulimits.nofile ≥ 20000`；**注意 docker logs 跨重启累积，"boot success!" 是无条件打印，真实就绪判据 = root@sys 可连接**。
 
 ---
 
