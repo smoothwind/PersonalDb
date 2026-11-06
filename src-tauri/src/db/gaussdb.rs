@@ -239,6 +239,15 @@ impl GaussDriver {
                     CellValue::Binary(base64::engine::general_purpose::STANDARD.encode(b))
                 })
             }),
+            Type::NUMERIC => row
+                .try_get::<_, Option<GaussNumeric>>(i)
+                .map(|v| {
+                    v.map(|n| {
+                        CellValue::Text(
+                            super::postgres::numeric_to_string(n.0).unwrap_or_default(),
+                        )
+                    })
+                }),
             _ => row
                 .try_get::<_, Option<String>>(i)
                 .map(|v| v.map(CellValue::Text)),
@@ -248,6 +257,21 @@ impl GaussDriver {
             Ok(None) => CellValue::Null,
             Err(_) => CellValue::Text("<无法显示的值>".into()),
         }
+    }
+}
+
+/// NUMERIC 原始字节的 FromSql 包装（gaussdb-types 默认不支持 NUMERIC 读取）
+struct GaussNumeric<'a>(&'a [u8]);
+
+impl<'a> tokio_gaussdb::types::FromSql<'a> for GaussNumeric<'a> {
+    fn from_sql(
+        _: &tokio_gaussdb::types::Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(GaussNumeric(raw))
+    }
+    fn accepts(ty: &tokio_gaussdb::types::Type) -> bool {
+        *ty == tokio_gaussdb::types::Type::NUMERIC
     }
 }
 

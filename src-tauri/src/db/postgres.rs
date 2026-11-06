@@ -132,6 +132,9 @@ impl PostgresDriver {
                     CellValue::Binary(base64::engine::general_purpose::STANDARD.encode(b))
                 })
             }),
+            Type::NUMERIC => row
+                .try_get::<_, Option<PgNumeric>>(i)
+                .map(|v| v.map(|n| CellValue::Text(numeric_to_string(n.0).unwrap_or_default()))),
             _ => row.try_get::<_, Option<String>>(i).map(|v| v.map(CellValue::Text)),
         };
         let _ = semantic;
@@ -140,6 +143,77 @@ impl PostgresDriver {
             Ok(None) => CellValue::Null,
             Err(_) => CellValue::Text("<无法显示的值>".into()),
         }
+    }
+}
+
+/// NUMERIC 二进制格式解码（零依赖）：wire format = i16 ndigits / weight / sign /
+/// dscale + base-10000 位组。tokio-postgres/gaussdb 默认无 NUMERIC FromSql（f32/f64
+/// 均不支持），缺此解码 NUMERIC 列在结果集中显示为 `<无法显示的值>` 占位符。
+/// 返回十进制文本（保精度，与前端按 semantic 格式化的约定一致）。
+pub(crate) fn numeric_to_string(buf: &[u8]) -> Option<String> {
+    if buf.len() < 8 {
+        return None;
+    }
+    let ndigits = i16::from_be_bytes([buf[0], buf[1]]) as usize;
+    let weight = i16::from_be_bytes([buf[2], buf[3]]) as i32;
+    let sign = i16::from_be_bytes([buf[4], buf[5]]);
+    let dscale = i16::from_be_bytes([buf[6], buf[7]]) as usize;
+    if sign == -0x4000i16 {
+        return Some("NaN".into());
+    }
+    let mut digits = Vec::with_capacity(ndigits);
+    for i in 0..ndigits {
+        let o = 8 + i * 2;
+        if o + 2 > buf.len() {
+            return None;
+        }
+        digits.push(i16::from_be_bytes([buf[o], buf[o + 1]]));
+    }
+    let mut s = String::new();
+    if sign == 0x4000 {
+        s.push('-');
+    }
+    if weight < 0 {
+        s.push('0');
+    } else {
+        for i in 0..=(weight as usize) {
+            let d = if i < digits.len() { digits[i] } else { 0 };
+            if i == 0 {
+                s.push_str(&d.to_string());
+            } else {
+                s.push_str(&format!("{d:04}"));
+            }
+        }
+    }
+    if dscale > 0 {
+        s.push('.');
+        let mut frac = String::new();
+        let mut idx = weight + 1;
+        while idx < digits.len() as i32 {
+            frac.push_str(&format!("{:04}", digits[idx as usize]));
+            idx += 1;
+        }
+        frac.truncate(dscale);
+        while frac.len() < dscale {
+            frac.push('0');
+        }
+        s.push_str(&frac);
+    }
+    Some(s)
+}
+
+/// NUMERIC 原始字节的 FromSql 包装（postgres-types 默认不支持 NUMERIC 读取）
+struct PgNumeric<'a>(&'a [u8]);
+
+impl<'a> tokio_postgres::types::FromSql<'a> for PgNumeric<'a> {
+    fn from_sql(
+        _: &tokio_postgres::types::Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(PgNumeric(raw))
+    }
+    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
+        *ty == tokio_postgres::types::Type::NUMERIC
     }
 }
 
