@@ -277,10 +277,12 @@ func semanticOf(dbType string) string {
 		strings.Contains(dbType, "BINARY_DOUBLE"),
 		strings.Contains(dbType, "BINARY_FLOAT"):
 		return "decimal"
+	case strings.Contains(dbType, "BLOB"), strings.Contains(dbType, "RAW"), strings.Contains(dbType, "BFILE"):
+		// 注意：须先于 LONG 判断——go-ora 将 BLOB 报告为 "LONGRAW"（含 "LONG"
+		// 子串），若 LONG 先命中会被误标 longtext，二进制值遭 UTF-8 lossy 破坏
+		return "binary"
 	case strings.Contains(dbType, "CLOB"), strings.Contains(dbType, "LONG"):
 		return "longtext"
-	case strings.Contains(dbType, "BLOB"), strings.Contains(dbType, "RAW"), strings.Contains(dbType, "BFILE"):
-		return "binary"
 	case strings.Contains(dbType, "TIMESTAMP"), dbType == "DATE":
 		return "datetime"
 	case strings.Contains(dbType, "JSON"):

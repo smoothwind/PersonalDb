@@ -296,16 +296,23 @@ impl DatabaseDriver for BridgeDriver {
         let rows = match database.filter(|s| !s.is_empty()) {
             Some(owner) => {
                 self.query_rows(
-                    "SELECT column_name, data_type, nullable, data_default FROM all_tab_columns \
-                     WHERE owner = :1 AND table_name = :2 ORDER BY column_id",
+                    "SELECT c.column_name, c.data_type, c.nullable, c.data_default, cc.comments \
+                      FROM all_tab_columns c \
+                      LEFT JOIN all_col_comments cc \
+                        ON cc.owner = c.owner AND cc.table_name = c.table_name \
+                       AND cc.column_name = c.column_name \
+                      WHERE c.owner = :1 AND c.table_name = :2 ORDER BY c.column_id",
                     vec![owner.to_string(), table.to_string()],
                 )
                 .await?
             }
             None => {
                 self.query_rows(
-                    "SELECT column_name, data_type, nullable, data_default FROM user_tab_columns \
-                     WHERE table_name = :1 ORDER BY column_id",
+                    "SELECT c.column_name, c.data_type, c.nullable, c.data_default, cc.comments \
+                      FROM user_tab_columns c \
+                      LEFT JOIN user_col_comments cc \
+                        ON cc.table_name = c.table_name AND cc.column_name = c.column_name \
+                      WHERE c.table_name = :1 ORDER BY c.column_id",
                     vec![table.to_string()],
                 )
                 .await?
@@ -318,7 +325,7 @@ impl DatabaseDriver for BridgeDriver {
                 data_type: r.get(1).cloned().flatten().unwrap_or_default(),
                 nullable: r.get(2).cloned().flatten().map(|s| s == "Y").unwrap_or(false),
                 default_value: r.get(3).cloned().flatten().filter(|d| !d.is_empty()),
-                comment: None,
+                comment: r.get(4).cloned().flatten().filter(|d| !d.is_empty()),
                 key: None,
             })
             .collect())
