@@ -19,6 +19,8 @@ default=root
 EOF
 
 # ---- 2) apt 源切阿里云（noble 为 deb822 格式 /etc/apt/sources.list.d/ubuntu.sources）----
+# 强制 IPv4：WSL NAT 下 IPv6 路由不通时 apt 会逐源长超时
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
 if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
   sed -i \
     -e 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu/|g' \
@@ -35,7 +37,8 @@ curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg -o /etc/apt/key
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://mirrors.aliyun.com/docker-ce/linux/ubuntu noble stable" \
   > /etc/apt/sources.list.d/docker.list
 apt-get update -qq
-apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 echo "[ok] docker-ce 安装完成"
 
 # ---- 4) Docker Hub 注册表镜像（公共镜像站会失效，拉不动就换列表）----
