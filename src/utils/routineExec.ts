@@ -46,6 +46,26 @@ const isOutParam = (p: RoutineParam): boolean => p.mode === 'OUT' || p.mode === 
 const isOracleFamily = (kind: DbKind): boolean => kind === 'oracle' || kind === 'oceanbase-oracle'
 
 /**
+ * PL 声明用类型归一化：all_arguments 的 data_type 是裸类型名（无长度），
+ * 无长度约束的字符类型声明在标准 Oracle 报 PLS-00215、OB Oracle 报
+ * ORA-00600 [-5544, Undeclared type: VARCHAR2]——补默认长度使其合法。
+ * OUT 实参缓冲区放大是 PL 合法语义，不影响调用。
+ */
+const PL_BARE_TYPE_LENGTHS: Record<string, string> = {
+  VARCHAR2: 'VARCHAR2(32767)',
+  NVARCHAR2: 'NVARCHAR2(32767)',
+  VARCHAR: 'VARCHAR2(32767)',
+  CHAR: 'CHAR(32767)',
+  NCHAR: 'NCHAR(32767)',
+  RAW: 'RAW(2000)',
+}
+
+function plDeclType(dataType: string): string {
+  const bare = dataType.trim().toUpperCase()
+  return PL_BARE_TYPE_LENGTHS[bare] ?? dataType
+}
+
+/**
  * 按方言生成例程调用 SQL（SPEC-ROUTINE-1：树右键 / 例程编辑「执行」共用）。
  *
  * - 函数：Oracle 系 `SELECT f(args) FROM DUAL`，其余 `SELECT f(args)`
@@ -82,8 +102,8 @@ export function buildRoutineCallSql(
     const callArgs = info.params.map((p, i) => {
       const varName = `pdb_a${i + 1}`
       if (!isOutParam(p)) return lits[i]
-      // OUT 声明变量；INOUT 以输入值初始化
-      decls.push(`  ${varName} ${p.dataType || 'VARCHAR2(4000)'}${p.mode === 'INOUT' ? ` := ${lits[i]}` : ''};`)
+      // OUT 声明变量；INOUT 以输入值初始化（裸类型补默认长度，见 plDeclType）
+      decls.push(`  ${varName} ${plDeclType(p.dataType || 'VARCHAR2(4000)')}${p.mode === 'INOUT' ? ` := ${lits[i]}` : ''};`)
       return varName
     })
     return {

@@ -27,13 +27,30 @@ export interface LogEntry {
 const MAX_ENTRIES = 1000
 const TITLE_MAX = 160
 
-/** SQL 摘要：取首个非空行并截断；多语句时加「N 条语句」前缀（i18n） */
+/** 块标记行（匿名块 DECLARE/BEGIN/END 与 SQL*Plus 终止符，摘要时跳过） */
+const BLOCK_MARKER_RE = /^(DECLARE|BEGIN|END;?|\/)$/i
+
+/** 取块体内首个有效行：首行为 DECLARE 时跳过声明段到 BEGIN 之后，首行为 BEGIN 时取下一行 */
+function firstMeaningfulLine(lines: string[]): string {
+  let i = lines.findIndex((s) => s.trim() !== '')
+  if (i < 0) return ''
+  const trimmed = lines.map((s) => s.trim())
+  if (/^DECLARE$/i.test(trimmed[i])) {
+    let j = i + 1
+    while (j < trimmed.length && !/^BEGIN$/i.test(trimmed[j])) j++
+    i = j + 1
+  } else if (/^BEGIN$/i.test(trimmed[i])) {
+    i += 1
+  }
+  for (; i < trimmed.length; i++) {
+    if (trimmed[i] !== '' && !BLOCK_MARKER_RE.test(trimmed[i])) return trimmed[i]
+  }
+  return trimmed.find((s) => s !== '') ?? ''
+}
+
+/** SQL 摘要：取首个非空行并截断（匿名块取块体内首个有效行，避免标题只有 DECLARE/BEGIN）；多语句时加「N 条语句」前缀（i18n） */
 export function sqlTitle(sql: string, count?: number): string {
-  const line =
-    sql
-      .split('\n')
-      .map((s) => s.trim())
-      .find(Boolean) ?? ''
+  const line = firstMeaningfulLine(sql.split('\n'))
   const base = line.length > TITLE_MAX ? line.slice(0, TITLE_MAX) + '…' : line
   return count && count > 1
     ? i18n.global.t('logs.multiPrefix', { n: count, summary: base })

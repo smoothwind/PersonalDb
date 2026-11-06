@@ -126,6 +126,40 @@ describe('buildRoutineCallSql：数据类型缺失兜底', () => {
   })
 })
 
+describe('buildRoutineCallSql：裸类型归一化（OB ORA-00600 [-5544] 修复）', () => {
+  it('裸 VARCHAR2 / RAW / CHAR 补默认长度', () => {
+    const r = buildRoutineCallSql(
+      'oracle',
+      proc([
+        { mode: 'OUT', dataType: 'VARCHAR2' },
+        { mode: 'OUT', dataType: 'RAW' },
+        { mode: 'INOUT', dataType: 'CHAR' },
+      ]),
+      [emptyArg(), emptyArg(), arg('9')],
+      '',
+    )
+    expect(r.sql).toContain('pdb_a1 VARCHAR2(32767);')
+    expect(r.sql).toContain('pdb_a2 RAW(2000);')
+    expect(r.sql).toContain('pdb_a3 CHAR(32767) := 9;')
+  })
+
+  it('带长度的类型与裸 NUMBER 不动', () => {
+    const r = buildRoutineCallSql(
+      'oracle',
+      proc([
+        { mode: 'OUT', dataType: 'VARCHAR2(100)' },
+        { mode: 'OUT', dataType: 'NUMBER' },
+        { mode: 'OUT', dataType: 'CLOB' },
+      ]),
+      [emptyArg(), emptyArg(), emptyArg()],
+      '',
+    )
+    expect(r.sql).toContain('pdb_a1 VARCHAR2(100);')
+    expect(r.sql).toContain('pdb_a2 NUMBER;')
+    expect(r.sql).toContain('pdb_a3 CLOB;')
+  })
+})
+
 describe('buildRoutineCallSql：kind 矩阵（全库覆盖）', () => {
   const kinds: DbKind[] = ['mysql', 'oceanbase', 'postgresql', 'gaussdb', 'oracle', 'oceanbase-oracle']
   it('六种库的函数调用均生成可执行 SELECT', () => {

@@ -111,6 +111,7 @@
   | postgresql / gaussdb | `SELECT f(args)` | `CALL p(args)`（PG11+） | OUT 位 NULL 占位 + toast 提示；INOUT 传值 |
 
 - **参数字面量**（`routineArgLiteral`）：NULL 勾选或留空 → `NULL`（最高优先）；原样勾选 → 原文内联（表达式/日期函数逃生门）；纯数字 → 数值原样；其余 → 方言字符串字面量（单引号翻倍，MySQL 系另转义反斜杠与会话 `dml_literal` 约定一致）。
+- **PL 声明类型归一化**（2026-11 修复 OB ORA-00600）：`all_arguments.data_type` 是裸类型名（无长度），裸字符类型声明标准 Oracle 报 PLS-00215、OB Oracle 报 `ORA-00600 [-5544, Undeclared type: VARCHAR2]` → `plDeclType` 对 `VARCHAR2/NVARCHAR2/VARCHAR/CHAR/NCHAR` 补 `(32767)`、`RAW` 补 `(2000)`（OUT 实参缓冲区放大是 PL 合法语义）；带长度/其它类型原样。
 - **已知限制（P2 登记）**：① Oracle 系 OUT 回显需桥接协议扩展（CallableStatement `registerOutParameter`）；② 危险操作检测按语句关键字，`CALL` 内部风险不感知（不触发 SPEC-SAFE-1 拦截）。
 - **落点**：`utils/routineExec.ts`、`components/RoutineExecDialog.vue`、`ConnectionTree.vue`（execRoutine 菜单 + onMenuExecRoutine/onExecRun）、`RoutineEditor.vue`（工具栏按钮）、`tests/routine-exec.spec.ts`。
 - **需求**：结果集表格支持斑马纹、行高设定、列拖拽排序、固定列、筛选、查找、排序。
@@ -414,7 +415,7 @@
   - 内容：SQL 执行（成功 info：SQL 摘要/行数/耗时；失败 error：附完整错误详情）、**多语句逐条入栈**（2026-11 修订：每条语句独立一条日志，title=`第 {i}/{n} 条 · 摘要`（`logs.stmtPrefix`），含该语句独立耗时/行数，失败条目 error 级附错误详情；不再推聚合条目，整段 SQL 仍由查询历史保留）、分页续拉失败、连接打开/断开/丢失/重连失败（连接事件与 SQL 失败去重防刷屏：`markLost` 重复标记静默）；
   - 交互：级别过滤（全部/错误/警告/信息）、自动滚动（上翻则暂停贴底）、点击行展开/收起完整详情、清空、收起面板；
   - 存储：**会话内存环形缓冲，上限 1000 条，不落盘**（SQL 历史持久化仍由查询历史 SQLite 负责）。
-- **落点**：`stores/logs.ts`（`useLogStore`：entries/unreadErrors/push/markOpened/clear、`sqlTitle` 摘要、`sqlStmtTitle` 逐条标题）、`components/LogPanel.vue`、数据源接线 `stores/tabs.ts`（runTab 成败/多语句/重连/分页）、`stores/connections.ts`（open/close/markLost/reconnect）、`QueryTabPane.vue`（结果集编辑应用失败）、`App.vue`（挂载/菜单/状态栏/快捷键）、`utils/shortcuts.ts`（toggleLogPanel）。
+- **落点**：`stores/logs.ts`（`useLogStore`：entries/unreadErrors/push/markOpened/clear、`sqlTitle` 摘要（**匿名块取块体内首个有效行**——DECLARE/BEGIN 标记行无信息量，2026-11）、`sqlStmtTitle` 逐条标题）、`components/LogPanel.vue`、数据源接线 `stores/tabs.ts`（runTab 成败/多语句/重连/分页）、`stores/connections.ts`（open/close/markLost/reconnect）、`QueryTabPane.vue`（结果集编辑应用失败）、`App.vue`（挂载/菜单/状态栏/快捷键）、`utils/shortcuts.ts`（toggleLogPanel）。
 
 ## SPEC-UI-23 工作台可停靠布局（拖拽重排 / 悬浮层叠）
 
