@@ -135,6 +135,9 @@ impl PostgresDriver {
             Type::NUMERIC => row
                 .try_get::<_, Option<PgNumeric>>(i)
                 .map(|v| v.map(|n| CellValue::Text(numeric_to_string(n.0).unwrap_or_default()))),
+            _ if matches!(ty.kind(), tokio_postgres::types::Kind::Array(_)) => row
+                .try_get::<_, Option<PgArrayText>>(i)
+                .map(|v| v.map(|a| CellValue::Text(a.0))),
             _ => row.try_get::<_, Option<String>>(i).map(|v| v.map(CellValue::Text)),
         };
         let _ = semantic;
@@ -214,6 +217,75 @@ impl<'a> tokio_postgres::types::FromSql<'a> for PgNumeric<'a> {
     }
     fn accepts(ty: &tokio_postgres::types::Type) -> bool {
         *ty == tokio_postgres::types::Type::NUMERIC
+    }
+}
+
+/// PG 数组二进制解码（零依赖，1 维数组文本化）：wire format =
+/// [ndim][flags][elem_oid] + [dim][lbound]×ndim + 元素 [len][data]。
+/// tokio-postgres/gaussdb 默认无数组 FromSql——缺失时数组列显示为占位符。
+/// 元素按 oid 渲染文本（int4/int8/float8/bool/text 系），其余标 `<bin:N>`。
+pub(crate) fn array_to_string(buf: &[u8]) -> Option<String> {
+    if buf.len() < 12 {
+        return None;
+    }
+    let ndim = i32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    let elem_oid = u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]);
+    if ndim != 1 {
+        return None; // 多维数组暂按不支持处理
+    }
+    let n = i32::from_be_bytes([buf[12], buf[13], buf[14], buf[15]]) as usize;
+    // 12 字节头 + dim(4) + lbound(4) = 元素区起点 20
+    let mut off = 20usize;
+    // (文本, 是否需要引号)——NULL 元素裸渲染，字符串 "NULL" 则加引号区分
+    let mut parts: Vec<(String, bool)> = Vec::with_capacity(n);
+    for _ in 0..n {
+        if off + 4 > buf.len() {
+            return None;
+        }
+        let len = i32::from_be_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]]);
+        off += 4;
+        if len < 0 {
+            parts.push(("NULL".to_string(), false));
+            continue;
+        }
+        let len = len as usize;
+        if off + len > buf.len() {
+            return None;
+        }
+        let raw = &buf[off..off + len];
+        off += len;
+        let text = match elem_oid {
+            23 => i32::from_be_bytes(raw.try_into().ok()?).to_string(),
+            20 => i64::from_be_bytes(raw.try_into().ok()?).to_string(),
+            701 => f64::from_be_bytes(raw.try_into().ok()?).to_string(),
+            16 => (raw[0] != 0).to_string(),
+            25 | 1043 | 18 | 1042 => String::from_utf8_lossy(raw).into_owned(),
+            _ => format!("<bin:{len}>"),
+        };
+        parts.push((text, true));
+    }
+    let need_quote =
+        |s: &str| s.is_empty() || s == "NULL" || s.chars().any(|c| "{}\",".contains(c) || c == '\\' || c.is_whitespace());
+    let inner = parts
+        .iter()
+        .map(|(s, q)| if *q && need_quote(s) { format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")) } else { s.clone() })
+        .collect::<Vec<_>>()
+        .join(",");
+    Some(format!("{{{inner}}}"))
+}
+
+/// 数组原始字节的 FromSql 包装（解码在 from_sql 内即时完成）
+struct PgArrayText(String);
+
+impl<'a> tokio_postgres::types::FromSql<'a> for PgArrayText {
+    fn from_sql(
+        _: &tokio_postgres::types::Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(PgArrayText(array_to_string(raw).unwrap_or_default()))
+    }
+    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
+        matches!(ty.kind(), tokio_postgres::types::Kind::Array(_))
     }
 }
 

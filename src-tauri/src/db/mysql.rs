@@ -219,7 +219,15 @@ impl MySqlDriver {
             }
             MYSQL_TYPE_BIT | MYSQL_TYPE_GEOMETRY => SemanticType::Binary,
             MYSQL_TYPE_ENUM | MYSQL_TYPE_SET | MYSQL_TYPE_VARCHAR | MYSQL_TYPE_VAR_STRING
-            | MYSQL_TYPE_STRING | MYSQL_TYPE_NULL => SemanticType::Text,
+            | MYSQL_TYPE_STRING | MYSQL_TYPE_NULL => {
+                // BINARY/VARBINARY（binary collation，charset 63）实为二进制数据——
+                // 缺此判断时字节被 UTF-8 lossy 转换（集成测试 BINARY(16) 实锤）
+                if charset == 63 {
+                    SemanticType::Binary
+                } else {
+                    SemanticType::Text
+                }
+            }
             _ => SemanticType::Unknown,
         }
     }

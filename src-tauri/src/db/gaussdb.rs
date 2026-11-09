@@ -248,6 +248,9 @@ impl GaussDriver {
                         )
                     })
                 }),
+            _ if matches!(ty.kind(), tokio_gaussdb::types::Kind::Array(_)) => row
+                .try_get::<_, Option<GaussArrayText>>(i)
+                .map(|v| v.map(|a| CellValue::Text(a.0))),
             _ => row
                 .try_get::<_, Option<String>>(i)
                 .map(|v| v.map(CellValue::Text)),
@@ -272,6 +275,21 @@ impl<'a> tokio_gaussdb::types::FromSql<'a> for GaussNumeric<'a> {
     }
     fn accepts(ty: &tokio_gaussdb::types::Type) -> bool {
         *ty == tokio_gaussdb::types::Type::NUMERIC
+    }
+}
+
+/// 数组原始字节的 FromSql 包装（解码在 from_sql 内即时完成）
+struct GaussArrayText(String);
+
+impl<'a> tokio_gaussdb::types::FromSql<'a> for GaussArrayText {
+    fn from_sql(
+        _: &tokio_gaussdb::types::Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(GaussArrayText(super::postgres::array_to_string(raw).unwrap_or_default()))
+    }
+    fn accepts(ty: &tokio_gaussdb::types::Type) -> bool {
+        matches!(ty.kind(), tokio_gaussdb::types::Kind::Array(_))
     }
 }
 
