@@ -328,6 +328,7 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | `sql_dev_scenarios.rs` | **SQL 开发场景战团**（五库共享 18 场景）：约束五类/冲突报错/自动生成键/UPSERT 三方言（ON DUPLICATE KEY·ON CONFLICT·MERGE）/分页方言（LIMIT OFFSET·ROWNUM）/JOIN+聚合+HAVING/EXISTS/递归 CTE/窗口函数/NULL 三值/保留字引号标识符/UNICODE·emoji/ALTER 增删列/批量 INSERT/SAVEPOINT/字符串函数/视图/脚本式序列 + **DDL 深水区 9**（索引形态/RENAME/类型变更/TRUNCATE/视图 OR REPLACE/序列生命周期/DEFAULT 调整）+ **例程生命周期 10**（创建/提取源码/执行含 OUT/编辑改逻辑/备注/触发器/删除消失验证） | 同上各库 env（如 `$env:PDB_IT_GAUSS=...` + `cargo test --test sql_dev_scenarios dev_gauss`；`dev_<kind>`/`ddl_<kind>`/`rt_<kind>` 十五入口） |
 | `export_integration.rs` | **导出引擎端到端**：全表 SQL 导出（preamble/DDL 注释/INSERT 转义）→ **删源表重放 → 数据一致闭环**/CSV BOM/Excel ZIP 签名/选中行 Sql+Json/build_dml（INSERT·UPDATE·DELETE 生成） | `$env:PDB_IT_MYSQL=...` |
 | `concurrency_integration.rs` | **事务管理与并发**：池 max=1 并发排队（16 并发精确累加）/会话隔离与提交可见性/行锁阻塞+限时超时+释放恢复 | `$env:PDB_IT_MYSQL=...` |
+| `pagination_session.rs` | **分页模板真实执行**（复刻前端 builtinPaged 两模板：ROWNUM pdb_rn 包装 / `pdb_p LIMIT OFFSET`，第二页窗口 + 列形状——Oracle 原始含 pdb_rn 列为既定 P2）+ **会话端到端**（server_sessions_sql 固定列契约/取 B 会话 id/kill 端到端——池透明重建后旧 id 必须消失；Oracle 无 V$SESSION 权限优雅跳过） | 同上各库 env（`paging_<kind>` / `sessions_<kind>` 十入口） |
 
 **集成测试实测沉淀的驱动事实**（2026-11）：
 - MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）
