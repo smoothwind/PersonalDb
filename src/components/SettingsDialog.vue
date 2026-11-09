@@ -883,7 +883,7 @@
           <div class="pref-section">{{ t('settings.tabAbout') }}</div>
           <div class="about-block">
             <div class="about-name">PersonalDb</div>
-            <div class="about-version">{{ t('menu.version') }} 0.3.0</div>
+            <div class="about-version">{{ t('menu.version') }} 0.3.1</div>
             <div class="about-desc">{{ t('menu.aboutBody') }}</div>
             <div class="about-stack">Tauri 2 · WebView2 · Vue 3 · TypeScript · Rust</div>
           </div>
