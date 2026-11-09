@@ -35,6 +35,25 @@ describe('routineArgLiteral：参数字面量规则', () => {
     expect(routineArgLiteral('oracle', undefined)).toBe('NULL')
   })
 
+  it('字符串边界：多行文本 / 混合引号反斜杠 / 超长输入', () => {
+    // 多行文本（换行随字面量原样进入）
+    const multiline = 'line1\nline2'
+    const multilineOracle = routineArgLiteral('oracle', arg(multiline))
+    expect(multilineOracle.startsWith("'") && multilineOracle.endsWith("'")).toBe(true)
+    expect(multilineOracle).toContain('line1\nline2')
+    // 单引号翻倍；MySQL 另转义反斜杠（会话语义），Oracle 保留
+    expect(routineArgLiteral('mysql', arg("it's\\行"))).toBe("'it''s\\\\行'")
+    expect(routineArgLiteral('oracle', arg("it's\\行"))).toBe("'it''s\\行'")
+    // 超长输入（10KB）：包装完整、单引号翻倍不丢字符、反斜杠按方言语义
+    const long = 'x'.repeat(10_000) + "'\\"
+    const longOracle = routineArgLiteral('oracle', arg(long))
+    expect(longOracle.startsWith("'") && longOracle.endsWith("'")).toBe(true)
+    expect(longOracle).toContain("x''\\")
+    expect(longOracle.length).toBe(long.replace(/'/g, "''").length + 2)
+    const longMysql = routineArgLiteral('mysql', arg(long))
+    expect(longMysql.length).toBe(long.replace(/'/g, "''").replace(/\\/g, '\\\\').length + 2)
+  })
+
   it('原样 → 原文内联（表达式逃生门）', () => {
     expect(routineArgLiteral('oracle', arg("TO_DATE('2024-01-01','YYYY-MM-DD')", { raw: true }))).toBe(
       "TO_DATE('2024-01-01','YYYY-MM-DD')",
