@@ -329,11 +329,14 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | `export_integration.rs` | **导出引擎端到端**：全表 SQL 导出（preamble/DDL 注释/INSERT 转义）→ **删源表重放 → 数据一致闭环**/CSV BOM/Excel ZIP 签名/选中行 Sql+Json/build_dml（INSERT·UPDATE·DELETE 生成） | `$env:PDB_IT_MYSQL=...` |
 | `concurrency_integration.rs` | **事务管理与并发**：池 max=1 并发排队（16 并发精确累加）/会话隔离与提交可见性/行锁阻塞+限时超时+释放恢复 | `$env:PDB_IT_MYSQL=...` |
 | `pagination_session.rs` | **分页模板真实执行**（复刻前端 builtinPaged 两模板：ROWNUM pdb_rn 包装 / `pdb_p LIMIT OFFSET`，第二页窗口 + 列形状——Oracle 原始含 pdb_rn 列为既定 P2）+ **会话端到端**（server_sessions_sql 固定列契约/取 B 会话 id/kill 端到端——池透明重建后旧 id 必须消失；Oracle 无 V$SESSION 权限优雅跳过） | 同上各库 env（`paging_<kind>` / `sessions_<kind>` 十入口） |
+| `types_lobs_integration.rs` | **超大对象 + 特殊类型深水区**：256KB BLOB 服务端生成（Oracle 走 EMPTY_BLOB + DBMS_LOB.WRITEAPPEND 分块）→ 客户端 base64 精确长度/头尾抽样；60KB 文本字符/字节双口径；特殊类型（MySQL JSON 路径/DATETIME(6)/BINARY(16)；PG·Gauss UUID/INT[]·TEXT[] **二进制数组解码**/TIMESTAMPTZ；Oracle TIMESTAMPTZ/NVARCHAR2/RAW(16)）——实锤修复 MySQL binary-collation BINARY 标 Text、PG/Gauss ARRAY 无 FromSql | 同上各库 env（`lob_<kind>` / `types_<kind>` 九入口） |
+| `large_multirs_integration.rs` | **10 万行大结果集 + 多结果集契约**：服务端生成 100k 行（批量 VALUES / generate_series / CONNECT BY）→ 全量读精确行数/首尾/抽样/无截断 + max_rows=99999 恰截断 + 深 OFFSET 翻页（性能基线雏形：MySQL 100k 读 ~8s）；多结果集：过程内双 SELECT → Ok 首结果集契约实证（MySQL），PG 扩展协议拒绝多语句串（前端逐条拆分必要性锚定） | 同上各库 env（`large_<kind>` / `multirs_<kind>` 七入口） |
 
 **集成测试实测沉淀的驱动事实**（2026-11）：
-- MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）
-- PG/Gauss：二进制协议 → Int 原生；**NUMERIC 需自定义 FromSql 解码**（修复前显示占位符，`postgres.rs#numeric_to_string` PG/Gauss 共用）
+- MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）；**BINARY/VARBINARY 走 binary collation（charset 63）但列类型仍是 MYSQL_TYPE_STRING/VAR_STRING——semantic_of 必须按 charset 判 Binary**（缺此判断字节遭 UTF-8 lossy，实锤修复）
+- PG/Gauss：二进制协议 → Int 原生；**NUMERIC 需自定义 FromSql 解码**（修复前显示占位符，`postgres.rs#numeric_to_string` PG/Gauss 共用）；**ARRAY 列同样无 FromSql——零依赖二进制解码 `array_to_string`**（12 字节头 + dim/lbound 各 4 字节 → 元素区起点 20；NULL 元素 len<0 裸渲染、字符串 "NULL" 加引号区分；PG/Gauss 共用，实锤修复）
 - Oracle 桥接：BLOB 报告为 LONGRAW（semanticOf 须先判 BLOB/RAW 再判 LONG）；describe 须联查 col_comments；NUMBER 经桥接为文本；DATE 含时间成分（semantic=DateTime）
+- 多结果集：MySQL `CALL` 过程内双 SELECT → Ok 且仅返回**首个结果集**（后续静默丢弃，驱动层契约）；MySQL 裸多语句串同样只回首个；**PG 扩展协议直接拒绝多语句串**（前端 splitStatements 逐条执行的必要性锚定）
 - openGauss 容器：默认 sha256 存储与 tokio-gaussdb SASL 不兼容（`gauss-auth.sh` 切 md5；密码重置受复用策略限制，现行 Gauss@456）
 
 ### 6.3 前端单测补强建议（纯前端，按收益排序）
@@ -342,7 +345,16 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 2. **sqlTitle 块体回退分支**：DECLARE 无 BEGIN / 嵌套块标记（补 logs-title.spec）
 3. **会话 kill id 校验纯函数**：非数字/负数/超长（若无独立函数则先抽函数再测）
 4. **capability 裁剪矩阵快照**：mock db_registry 输出断言各库显隐集合
-5. E2E 不引入（Tauri 桌面 E2E 成本高；第 5 节手动基线兜底）
+5. E2E 不引入 Playwright/Selenium 全家桶（Tauri 桌面 E2E 成本高；手动基线 + 下述 CDP 冒烟兜底）
+
+### 6.4 UI E2E 冒烟（WebView2 CDP 桥，`ops/uie2e/`）
+
+**原理**：`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223` 注入 WebView2 → DevTools 协议 `Runtime.evaluate` 求值页面内 JS（**零额外依赖**——tauri-driver/msedgedriver 方案因下载源不可达弃用）。
+
+- `cdp-lib.ps1`：`Invoke-CdpEval` 进程内函数（字符串值直接返回防双重 JSON 编码；嵌套 powershell 传参会吃引号——必须 dot-source 进程内调用）
+- `_cdp_eval.ps1`：CLI 包装（单表达式求值）
+- `ui-smoke.ps1`：冒烟套件（重启应用带调试端口 → 5 探针 PASS/FAIL）——P1 应用挂载+splash 关闭 / P2 菜单栏 ≥15 项 / P3 编辑器+结果网格+面板导航条 / P4 连接树 / **P5 状态栏版本守卫**（须与仓库 App.vue 硬编码一致——曾实锤本机静默安装的是版本号提交前 8 分钟的构建，UI 显示 v0.3.0；CI 草稿 Release 资产从 f396320 构建无此问题）
+- 基线（2026-11-09）：4/5 PASS（P5 守卫对本机陈旧构建正确亮红——重装 v0.3.1 后转绿）
 
 ---
 
