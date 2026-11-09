@@ -325,6 +325,7 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | `obm_integration.rs` | OB MySQL 模式：tenant 连接/OB 方言契约（锁视图 None）/OUT 回显回归/DDL/触发器/事务 | `$env:PDB_IT_OBM="127.0.0.1:2881:root@test:obroot:test"`（`only.sh ob` + `ob-init.sh`） |
 | `oracle_integration.rs` | Oracle（oracle-bridge）：service_name/注释透传/GET_DDL+COMMENT ON 附加/NUMBER·DATE·BLOB/能力契约/例程 IN-OUT+匿名块 | `$env:PDB_IT_ORACLE="127.0.0.1:1521:test:test:FREEPDB1"`（`only.sh oracle`） |
 | `gauss_integration.rs` | GaussDB/openGauss：sha256→md5 认证修复（`gauss-auth.sh`）/NUMERIC 解码回归/序列 pg_class 兜底/计划树/事务 | `$env:PDB_IT_GAUSS="127.0.0.1:5433:gaussdb:Gauss@456"`（`only.sh gauss`） |
+| `sql_dev_scenarios.rs` | **SQL 开发场景战团**（五库共享 18 场景）：约束五类/冲突报错/自动生成键/UPSERT 三方言（ON DUPLICATE KEY·ON CONFLICT·MERGE）/分页方言（LIMIT OFFSET·ROWNUM）/JOIN+聚合+HAVING/EXISTS/递归 CTE/窗口函数/NULL 三值/保留字引号标识符/UNICODE·emoji/ALTER 增删列/批量 INSERT/SAVEPOINT/字符串函数/视图/脚本式序列 | 同上各库 env（如 `$env:PDB_IT_GAUSS=...` + `cargo test --test sql_dev_scenarios dev_gauss`；`dev_<kind>` 五入口） |
 
 **集成测试实测沉淀的驱动事实**（2026-11）：
 - MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）
