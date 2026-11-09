@@ -201,7 +201,10 @@ impl SqlDialect for MySqlFamilyDialect {
     }
 
     fn export_preamble(&self) -> &'static str {
-        "SET NAMES utf8mb4;\nSET NO_BACKSLASH_ESCAPES = 1;\n\n"
+        // NO_BACKSLASH_ESCAPES 是 sql_mode 值而非独立变量——直接 SET 会报
+        // ERROR 1193（Unknown system variable），重放导出文件首行即失败。
+        // 合并进现有 sql_mode（保留其他模式），MySQL/OB 通用。
+        "SET NAMES utf8mb4;\nSET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_BACKSLASH_ESCAPES');\n\n"
     }
 
     fn table_ddl_strategy(&self, schema: Option<&str>, table: &str) -> DdlStrategy {

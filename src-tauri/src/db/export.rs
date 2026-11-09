@@ -202,6 +202,11 @@ pub async fn run_export(
                     return Err(AppError::General("获取表 DDL 失败".into()));
                 }
                 write!(w, "{ddl}")?;
+                // SHOW CREATE / GET_DDL 原文不带尾分号——缺分号会让 DDL 与后续
+                // INSERT 粘连成一条语句，重放（mysql CLI/本产品）首行即语法错误
+                if !ddl.trim_end().ends_with(';') {
+                    write!(w, ";")?;
+                }
                 write!(w, "\n\n")?;
             }
 
