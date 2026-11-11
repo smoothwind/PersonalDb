@@ -78,9 +78,12 @@ impl PostgresDriver {
                 SemanticType::Number
             }
             Type::NUMERIC => SemanticType::Decimal,
-            Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::NAME | Type::CHAR | Type::UNKNOWN => {
+            Type::VARCHAR | Type::BPCHAR | Type::NAME | Type::CHAR | Type::UNKNOWN => {
                 SemanticType::Text
             }
+            // TEXT 为无长度限制长文本——与 MySQL TEXT→LongText 语义对齐（实锤：原与
+            // VARCHAR 同归 Text，长文本列丢失 LongText 渲染路由）
+            Type::TEXT => SemanticType::LongText,
             Type::JSON | Type::JSONB => SemanticType::Json,
             Type::BYTEA => SemanticType::Binary,
             Type::TIMESTAMP | Type::TIMESTAMPTZ => SemanticType::DateTime,

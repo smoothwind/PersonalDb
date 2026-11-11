@@ -175,9 +175,11 @@ impl GaussDriver {
                 SemanticType::Number
             }
             Type::NUMERIC => SemanticType::Decimal,
-            Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::NAME | Type::CHAR | Type::UNKNOWN => {
+            Type::VARCHAR | Type::BPCHAR | Type::NAME | Type::CHAR | Type::UNKNOWN => {
                 SemanticType::Text
             }
+            // TEXT 为无长度限制长文本——与 PG 驱动、MySQL TEXT→LongText 语义对齐
+            Type::TEXT => SemanticType::LongText,
             Type::JSON | Type::JSONB => SemanticType::Json,
             Type::BYTEA => SemanticType::Binary,
             Type::TIMESTAMP | Type::TIMESTAMPTZ => SemanticType::DateTime,

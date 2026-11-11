@@ -331,12 +331,15 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | `pagination_session.rs` | **分页模板真实执行**（复刻前端 builtinPaged 两模板：ROWNUM pdb_rn 包装 / `pdb_p LIMIT OFFSET`，第二页窗口 + 列形状——Oracle 原始含 pdb_rn 列为既定 P2）+ **会话端到端**（server_sessions_sql 固定列契约/取 B 会话 id/kill 端到端——池透明重建后旧 id 必须消失；Oracle 无 V$SESSION 权限优雅跳过） | 同上各库 env（`paging_<kind>` / `sessions_<kind>` 十入口） |
 | `types_lobs_integration.rs` | **超大对象 + 特殊类型深水区**：256KB BLOB 服务端生成（Oracle 走 EMPTY_BLOB + DBMS_LOB.WRITEAPPEND 分块）→ 客户端 base64 精确长度/头尾抽样；60KB 文本字符/字节双口径；特殊类型（MySQL JSON 路径/DATETIME(6)/BINARY(16)；PG·Gauss UUID/INT[]·TEXT[] **二进制数组解码**/TIMESTAMPTZ；Oracle TIMESTAMPTZ/NVARCHAR2/RAW(16)）——实锤修复 MySQL binary-collation BINARY 标 Text、PG/Gauss ARRAY 无 FromSql | 同上各库 env（`lob_<kind>` / `types_<kind>` 九入口） |
 | `large_multirs_integration.rs` | **10 万行大结果集 + 多结果集契约**：服务端生成 100k 行（批量 VALUES / generate_series / CONNECT BY）→ 全量读精确行数/首尾/抽样/无截断 + max_rows=99999 恰截断 + 深 OFFSET 翻页（性能基线雏形：MySQL 100k 读 ~8s）；多结果集：过程内双 SELECT → Ok 首结果集契约实证（MySQL），PG 扩展协议拒绝多语句串（前端逐条拆分必要性锚定） | 同上各库 env（`large_<kind>` / `multirs_<kind>` 七入口） |
+| `sql_edges_integration.rs` | **SQL 边缘深水区**：FK 外键生命周期（建表含 FK CASCADE/SET NULL/合法子行/孤儿被拒/级联删除/**RENAME 子表后约束仍生效**/DROP 被引用父表被拒 + CASCADE/CASCADE CONSTRAINTS/先删子放行）+ **DDL 事务性差异**（MySQL/OBM DDL 隐式提交 ROLLBACK 无效 vs PG/Gauss DDL 可回滚 + DML 皆可回滚；Oracle 桥接自动提交跳过）+ **RETURNING**（PG/Gauss INSERT/UPDATE/DELETE RETURNING 读回受影响行）+ **窗口函数族**（ROW_NUMBER/RANK/DENSE_RANK 并列语义 / LAG/LEAD / NTILE / 框架累加 SUM OVER ROWS） | 同上各库 env（`fk_<kind>`/`ddltx_<kind>`/`ret_<kind>`/`win_<kind>` 十七入口） |
+| `semantic_matrix_integration.rs` | **语义类型推断矩阵**（前端渲染路由快照）：各库全类型表 SELECT * 断言每列 SemanticType——MySQL/OBM 12 列（TEXT→LongText、BINARY(16)→Binary 修复回归、JSON→Json…）、PG 11 列（UUID→Uuid/JSONB→Json/NUMERIC→Decimal…）、Oracle 6 列（BLOB→Binary 修复回归/RAW→Binary/DATE=DateTime…） | 同上各库 env（`sem_<kind>` 五入口） |
 
 **集成测试实测沉淀的驱动事实**（2026-11）：
 - MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）；**BINARY/VARBINARY 走 binary collation（charset 63）但列类型仍是 MYSQL_TYPE_STRING/VAR_STRING——semantic_of 必须按 charset 判 Binary**（缺此判断字节遭 UTF-8 lossy，实锤修复）
-- PG/Gauss：二进制协议 → Int 原生；**NUMERIC 需自定义 FromSql 解码**（修复前显示占位符，`postgres.rs#numeric_to_string` PG/Gauss 共用）；**ARRAY 列同样无 FromSql——零依赖二进制解码 `array_to_string`**（12 字节头 + dim/lbound 各 4 字节 → 元素区起点 20；NULL 元素 len<0 裸渲染、字符串 "NULL" 加引号区分；PG/Gauss 共用，实锤修复）
+- PG/Gauss：二进制协议 → Int 原生；**NUMERIC 需自定义 FromSql 解码**（修复前显示占位符，`postgres.rs#numeric_to_string` PG/Gauss 共用）；**ARRAY 列同样无 FromSql——零依赖二进制解码 `array_to_string`**（12 字节头 + dim/lbound 各 4 字节 → 元素区起点 20；NULL 元素 len<0 裸渲染、字符串 "NULL" 加引号区分；PG/Gauss 共用，实锤修复）；**TEXT 语义曾与 VARCHAR 同归 Text——对齐 MySQL TEXT→LongText**（实锤修复）；**openGauss DATE 在协议层报告 TIMESTAMP**（引擎按时间戳存储，契约记录）
 - Oracle 桥接：BLOB 报告为 LONGRAW（semanticOf 须先判 BLOB/RAW 再判 LONG）；describe 须联查 col_comments；NUMBER 经桥接为文本；DATE 含时间成分（semantic=DateTime）
 - 多结果集：MySQL `CALL` 过程内双 SELECT → Ok 且仅返回**首个结果集**（后续静默丢弃，驱动层契约）；MySQL 裸多语句串同样只回首个；**PG 扩展协议直接拒绝多语句串**（前端 splitStatements 逐条执行的必要性锚定）
+- RETURNING 契约：`INSERT/UPDATE/DELETE ... RETURNING` 生成结果集 → **affected_rows 恒 None**（驱动约定「columns 非空则丢弃 affected_rows」）——前端状态栏对 RETURNING 语句的影响行数不显示
 - openGauss 容器：默认 sha256 存储与 tokio-gaussdb SASL 不兼容（`gauss-auth.sh` 切 md5；密码重置受复用策略限制，现行 Gauss@456）
 
 ### 6.3 前端单测补强建议（纯前端，按收益排序）
