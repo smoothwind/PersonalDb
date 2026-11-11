@@ -333,6 +333,8 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 | `large_multirs_integration.rs` | **10 万行大结果集 + 多结果集契约**：服务端生成 100k 行（批量 VALUES / generate_series / CONNECT BY）→ 全量读精确行数/首尾/抽样/无截断 + max_rows=99999 恰截断 + 深 OFFSET 翻页（性能基线雏形：MySQL 100k 读 ~8s）；多结果集：过程内双 SELECT → Ok 首结果集契约实证（MySQL），PG 扩展协议拒绝多语句串（前端逐条拆分必要性锚定） | 同上各库 env（`large_<kind>` / `multirs_<kind>` 七入口） |
 | `sql_edges_integration.rs` | **SQL 边缘深水区**：FK 外键生命周期（建表含 FK CASCADE/SET NULL/合法子行/孤儿被拒/级联删除/**RENAME 子表后约束仍生效**/DROP 被引用父表被拒 + CASCADE/CASCADE CONSTRAINTS/先删子放行）+ **DDL 事务性差异**（MySQL/OBM DDL 隐式提交 ROLLBACK 无效 vs PG/Gauss DDL 可回滚 + DML 皆可回滚；Oracle 桥接自动提交跳过）+ **RETURNING**（PG/Gauss INSERT/UPDATE/DELETE RETURNING 读回受影响行）+ **窗口函数族**（ROW_NUMBER/RANK/DENSE_RANK 并列语义 / LAG/LEAD / NTILE / 框架累加 SUM OVER ROWS） | 同上各库 env（`fk_<kind>`/`ddltx_<kind>`/`ret_<kind>`/`win_<kind>` 十七入口） |
 | `semantic_matrix_integration.rs` | **语义类型推断矩阵**（前端渲染路由快照）：各库全类型表 SELECT * 断言每列 SemanticType——MySQL/OBM 12 列（TEXT→LongText、BINARY(16)→Binary 修复回归、JSON→Json…）、PG 11 列（UUID→Uuid/JSONB→Json/NUMERIC→Decimal…）、Oracle 6 列（BLOB→Binary 修复回归/RAW→Binary/DATE=DateTime…） | 同上各库 env（`sem_<kind>` 五入口） |
+| `sql_func2_integration.rs` | **SQL 功能深水区续**：集合运算（UNION/UNION ALL 去重语义/DISTINCT/INTERSECT/EXCEPT——**MySQL 8.0.46 实测支持 INTERSECT/EXCEPT**，五库统一测语义）+ 复合约束（复合 PK (a,b)/复合 UNIQUE——子列相同允许、全列重复报错）+ 生成列（PG/Gauss/MySQL GENERATED ALWAYS AS STORED——自动计算/显式写入被拒/UPDATE 后重算）+ DML 扩展（UPDATE 标量子查询五库通用/REPLACE INTO + INSERT IGNORE（MySQL/OBM）/DELETE USING（PG/Gauss）） | 同上各库 env（`set_<kind>`/`cmp_<kind>`/`gen_<kind>`/`dml_<kind>` 十八入口） |
+| `tx_depth_integration.rs` | **事务深水区**（双连接）：隔离级别快照语义——RR 事务快照（B 提交对 A 不可见直至 A COMMIT，MySQL 默认 + PG 显式）vs RC 逐语句快照（B 提交立即可见，MySQL SET SESSION + PG 默认）；**死锁检测**——A 锁 id1/B 锁 id2 交叉申请：MySQL InnoDB 死锁检测立即回滚一方报 1213、PG 靠 lock_timeout（'3s'）到期报错，断言至少一方 Err | `$env:PDB_IT_MYSQL` / `$env:PDB_IT_PG`（`iso_<kind>`/`deadlock_<kind>` 四入口） |
 
 **集成测试实测沉淀的驱动事实**（2026-11）：
 - MySQL/OB：文本协议 → 值统一 Text（semantic 格式化）；池 `constraints(1,1)`+`reset_connection(false)`（OUT 回显依赖）；**BINARY/VARBINARY 走 binary collation（charset 63）但列类型仍是 MYSQL_TYPE_STRING/VAR_STRING——semantic_of 必须按 charset 判 Binary**（缺此判断字节遭 UTF-8 lossy，实锤修复）
@@ -340,6 +342,7 @@ Rust 侧：`cargo check`（默认 + `--no-default-features`）零警告；CI 强
 - Oracle 桥接：BLOB 报告为 LONGRAW（semanticOf 须先判 BLOB/RAW 再判 LONG）；describe 须联查 col_comments；NUMBER 经桥接为文本；DATE 含时间成分（semantic=DateTime）
 - 多结果集：MySQL `CALL` 过程内双 SELECT → Ok 且仅返回**首个结果集**（后续静默丢弃，驱动层契约）；MySQL 裸多语句串同样只回首个；**PG 扩展协议直接拒绝多语句串**（前端 splitStatements 逐条执行的必要性锚定）
 - RETURNING 契约：`INSERT/UPDATE/DELETE ... RETURNING` 生成结果集 → **affected_rows 恒 None**（驱动约定「columns 非空则丢弃 affected_rows」）——前端状态栏对 RETURNING 语句的影响行数不显示
+- 集合运算：**MySQL 8.0.46 实测支持 INTERSECT/EXCEPT**（非报错）——五库集合运算语义统一；MySQL 死锁=InnoDB 检测回滚一方（1213），PG 死锁靠 lock_timeout 到期（无自动检测）
 - openGauss 容器：默认 sha256 存储与 tokio-gaussdb SASL 不兼容（`gauss-auth.sh` 切 md5；密码重置受复用策略限制，现行 Gauss@456）
 
 ### 6.3 前端单测补强建议（纯前端，按收益排序）
