@@ -17,6 +17,9 @@ dist-ssr
 coverage/
 *.tsbuildinfo
 
+# tauri dev 会话临时配置（曾误入库）
+.tmp_tauri_dev.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
