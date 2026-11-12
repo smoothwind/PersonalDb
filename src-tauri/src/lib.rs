@@ -1,4 +1,6 @@
 mod commands;
+
+mod ai;
 // pub：供 tests/ 集成测试直连驱动层（对应用行为无影响）
 pub mod db;
 mod error;
@@ -88,6 +90,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ai::ai_chat_stream,
+            ai::ai_cancel,
+            ai::ai_test_connection,
             commands::db_registry,
             commands::bridge_status,
             commands::jdbc_drivers_list,

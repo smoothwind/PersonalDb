@@ -41,6 +41,9 @@ base64 = "0.22"
 rust_xlsxwriter = "0.89"
 oracle = { version = "0.6", optional = true, features = ["chrono"] }
 
+# AI 提供方客户端（OpenAI 兼容端点；rustls 免 OpenSSL 依赖，stream 供 SSE 流式）
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+
 # 通用
 async-trait = "0.1"
 thiserror = "2"

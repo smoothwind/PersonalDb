@@ -832,6 +832,12 @@
           </div>
         </template>
 
+        <!-- AI 能力 -->
+        <template v-else-if="active === 'ai'">
+          <div class="pref-section">{{ t('settings.aiSection') }}</div>
+          <AiSettingsPane />
+        </template>
+
         <!-- 快捷键 -->
         <template v-else-if="active === 'shortcuts'">
           <div class="pref-section">{{ t('settings.shortcutsSection') }}</div>
@@ -941,6 +947,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import CodeViewer from './CodeViewer.vue'
+import AiSettingsPane from './AiSettingsPane.vue'
 import CellDisplay from './cell-viewers/CellDisplay.vue'
 import ValueRuleEditor from './ValueRuleEditor.vue'
 import EmptyState from './EmptyState.vue'
@@ -1078,6 +1085,7 @@ const categories = computed(() => [
   { key: 'safety', label: t('settings.safetySection'), icon: objectIcon('act_shield') },
   { key: 'storage', label: t('settings.storageSection'), icon: objectIcon('obj_folder') },
   { key: 'sqlTemplates', label: t('settings.sqlTemplatesSection'), icon: objectIcon('obj_query') },
+  { key: 'ai', label: t('settings.aiSection'), icon: objectIcon('act_ai') },
   { key: 'shortcuts', label: t('settings.shortcutsSection'), icon: objectIcon('act_keyboard') },
   { key: 'about', label: t('settings.tabAbout'), icon: objectIcon('act_info') },
 ])

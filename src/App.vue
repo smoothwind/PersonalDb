@@ -511,6 +511,7 @@ import { useTabsStore } from './stores/tabs'
 import { usePreferencesStore } from './stores/preferences'
 import { useSnippetStore } from './stores/snippets'
 import { useWorkspaceStore } from './stores/workspaces'
+import { useAiStore } from './stores/ai'
 import { dbCommit, dbRegistry, dbRollback, dbSetAutocommit } from './api/db'
 import { open as openDirDialog } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
@@ -529,6 +530,7 @@ const updateStore = useUpdateStore()
 const snippetStore = useSnippetStore()
 const workspaceStore = useWorkspaceStore()
 const layout = useLayoutStore()
+const aiStore = useAiStore()
 
 /**
  * 菜单栏图标映射（唯一来源，禁止在模板里散落图标判断）。
@@ -666,6 +668,7 @@ interface PaletteCmd {
 const paletteCommands = computed<PaletteCmd[]>(() => {
   const cmds: PaletteCmd[] = [
     { id: 'new-query', label: t('app.newQuery'), group: t('palette.gApp'), icon: 'obj_query', action: () => void quickNewQuery() },
+    { id: 'ai-sidebar', label: t('ai.sidebar'), group: t('palette.gApp'), icon: 'act_ai', action: () => runGlobalAction('aiPanel') },
     { id: 'new-conn', label: t('app.newConnection'), group: t('palette.gApp'), icon: 'obj_connection', action: () => openCreate() },
     { id: 'settings', label: t('settings.title'), group: t('palette.gApp'), icon: 'act_settings', action: () => (settingsVisible.value = true) },
     { id: 'drivers', label: t('driver.title'), group: t('palette.gTools'), icon: 'act_driver', action: () => (driverManagerVisible.value = true) },
@@ -803,6 +806,12 @@ function runGlobalAction(actionKey: string): void {
     case 'resetLayout':
       doResetLayout()
       break
+    case 'aiPanel': {
+      // AI 侧栏挂在查询页签编辑器区；非查询页签不给入口
+      const tab = tabsStore.activeTab
+      if (tab && tab.type === 'query') aiStore.toggleSidebar(tab.id)
+      break
+    }
   }
 }
 

@@ -18,6 +18,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { key: 'openSettings', labelKey: 'settings.title', scope: 'global', default: 'Ctrl+,' },
   { key: 'toggleLogPanel', labelKey: 'logs.panel', scope: 'global', default: 'Ctrl+L' },
   { key: 'resetLayout', labelKey: 'menu.resetLayout', scope: 'global', default: 'Ctrl+Alt+R' },
+  { key: 'aiPanel', labelKey: 'ai.sidebar', scope: 'global', default: 'Ctrl+I' },
   { key: 'run', labelKey: 'query.run', scope: 'editor', default: 'Ctrl+Enter' },
   { key: 'runSelection', labelKey: 'query.runSelected', scope: 'editor', default: 'Ctrl+Shift+Enter' },
   { key: 'runLine', labelKey: 'query.runLine', scope: 'editor', default: 'Ctrl+Alt+Enter' },

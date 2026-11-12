@@ -46,6 +46,8 @@ export const APP_ICONS: Record<string, string> = {
 
   // ================= 动作类 =================
   act_run: '<path d="M7 4.8v14.4L19.2 12z"/>',
+  act_ai:
+    '<path d="M12 3.5l1.8 4.9 4.9 1.8-4.9 1.8L12 16.9l-1.8-4.9-4.9-1.8 4.9-1.8z"/><path d="M18.3 15.2l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8z"/>',
   act_stop: '<rect x="6" y="6" width="12" height="12" rx="1.6"/>',
   act_commit: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.8 2.8L16.2 9.5"/>',
   act_rollback: '<path d="M4 5v5h5"/><path d="M4.6 10A8 8 0 1 1 12 20a8 8 0 0 1-7.4-4.9"/>',

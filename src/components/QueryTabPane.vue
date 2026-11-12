@@ -113,16 +113,29 @@
     <!-- 事务管理已移至主窗体工具栏（见 App.vue） -->
 
     <div class="editor-wrap" :style="{ height: editorWrapHeight + 'px' }">
-      <SqlEditor
-        ref="editorRef"
-        v-model="tab.sql"
-        :kind="tab.kind"
-        :snippets="snippetMap"
-        :connection-id="tab.connectionId"
-        :database="tab.database"
-        fill
-        @run="run"
-        @format="doFormat"
+      <div class="editor-main">
+        <SqlEditor
+          ref="editorRef"
+          v-model="tab.sql"
+          :kind="tab.kind"
+          :snippets="snippetMap"
+          :connection-id="tab.connectionId"
+          :database="tab.database"
+          fill
+          @run="run"
+          @format="doFormat"
+        />
+      </div>
+      <!-- AI 侧栏（按页签开关；产出可插入/替换编辑器内容） -->
+      <AiSidebar
+        v-if="aiStore.sidebarOf(tab.id)"
+        :tab="tab"
+        :get-selection="getEditorSelection"
+        :mode="aiMode"
+        :preset-text="aiPresetText"
+        @close="aiStore.setSidebar(tab.id, false)"
+        @insert="aiInsert"
+        @replace="aiReplace"
       />
     </div>
     <div class="splitter-h" @mousedown="startEditorDrag" />
@@ -157,7 +170,16 @@
               >
                 {{ t('conn.reconnect') }}
               </el-button>
-              <el-button v-else size="small" type="primary" plain @click="retryRun">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :icon="objectIcon('act_ai')"
+                @click="openAiDiagnose"
+              >
+                {{ t('ai.diagnose') }}
+              </el-button>
+              <el-button v-if="!errorIsConn" size="small" plain @click="retryRun">
                 {{ t('result.retry') }}
               </el-button>
               <el-button size="small" text @click="clearError">
@@ -723,6 +745,8 @@ import {
 } from '@element-plus/icons-vue'
 import { objectIcon } from '../utils/objectIcons'
 import { useConnectionStore } from '../stores/connections'
+import { useAiStore } from '../stores/ai'
+import type { AiMode } from '../types/ai'
 import { useLogStore } from '../stores/logs'
 import { usePreferencesStore } from '../stores/preferences'
 import { useTabsStore, looksLikeConnError, type QueryTab } from '../stores/tabs'
@@ -765,6 +789,7 @@ const prefs = usePreferencesStore()
 const tabsStore = useTabsStore()
 const snippetStore = useSnippetStore()
 const wsStore = useWorkspaceStore()
+const aiStore = useAiStore()
 
 /** 当前连接是否在线（用于快速重连入口） */
 const connected = computed(() => connStore.isConnected(props.tab.connectionId))
@@ -855,6 +880,34 @@ function confirmLoadSql(): void {
 const databases = ref<string[]>([])
 const editorRef = ref<InstanceType<typeof SqlEditor>>()
 const snippetSettingsVisible = ref(false)
+
+// ================= AI 侧栏（挂编辑器区；错误条「AI 诊断」预填模式） =================
+const AiSidebar = defineAsyncComponent(() => import('./AiSidebar.vue'))
+
+/** 外部入口（错误条等）预设的模式/输入；null = 不干预侧栏默认态 */
+const aiMode = ref<AiMode | null>(null)
+const aiPresetText = ref<string | null>(null)
+
+/** 错误条「AI 诊断」：开侧栏 + 预置诊断模式与错误摘要 */
+function openAiDiagnose(): void {
+  aiMode.value = 'diagnose'
+  aiPresetText.value = props.tab.error
+  aiStore.setSidebar(props.tab.id, true)
+}
+
+function getEditorSelection(): string {
+  return editorRef.value?.getSelection() ?? ''
+}
+
+/** AI 产出追加到编辑器（保留原内容） */
+function aiInsert(sql: string): void {
+  props.tab.sql = props.tab.sql ? `${props.tab.sql}\n\n${sql}` : sql
+}
+
+/** AI 产出替换编辑器全部内容 */
+function aiReplace(sql: string): void {
+  props.tab.sql = sql
+}
 
 /** 结果视图模式：表格 / 记录 / 执行计划 */
 const viewMode = ref<'grid' | 'record' | 'plan'>('grid')
