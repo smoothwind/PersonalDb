@@ -669,6 +669,7 @@ const paletteCommands = computed<PaletteCmd[]>(() => {
   const cmds: PaletteCmd[] = [
     { id: 'new-query', label: t('app.newQuery'), group: t('palette.gApp'), icon: 'obj_query', action: () => void quickNewQuery() },
     { id: 'ai-sidebar', label: t('ai.sidebar'), group: t('palette.gApp'), icon: 'act_ai', action: () => runGlobalAction('aiPanel') },
+    { id: 'ai-chat', label: t('ai.chatTitle'), group: t('palette.gApp'), icon: 'act_ai', action: () => runGlobalAction('aiChat') },
     { id: 'new-conn', label: t('app.newConnection'), group: t('palette.gApp'), icon: 'obj_connection', action: () => openCreate() },
     { id: 'settings', label: t('settings.title'), group: t('palette.gApp'), icon: 'act_settings', action: () => (settingsVisible.value = true) },
     { id: 'drivers', label: t('driver.title'), group: t('palette.gTools'), icon: 'act_driver', action: () => (driverManagerVisible.value = true) },
@@ -810,6 +811,30 @@ function runGlobalAction(actionKey: string): void {
       // AI 侧栏挂在查询页签编辑器区；非查询页签不给入口
       const tab = tabsStore.activeTab
       if (tab && tab.type === 'query') aiStore.toggleSidebar(tab.id)
+      break
+    }
+    case 'aiChat': {
+      // AI 对话 Tab：取当前激活页签的连接上下文（方言决定系统提示）
+      const tab = tabsStore.activeTab
+      if (!tab) {
+        ElMessage.warning(t('ai.chatNeedContext'))
+        break
+      }
+      const existing = tabsStore.tabs.find((t2) => t2.type === 'chat' && t2.connectionId === tab.connectionId && t2.database === tab.database)
+      if (existing) {
+        tabsStore.activeTabId = existing.id
+        break
+      }
+      tabsStore.openTab({
+        connectionId: tab.connectionId,
+        connectionName: tab.connectionName,
+        kind: tab.kind,
+        database: tab.database,
+        type: 'chat',
+        title: t('ai.chatTitle'),
+        icon: 'act_ai',
+        force: true,
+      })
       break
     }
   }
