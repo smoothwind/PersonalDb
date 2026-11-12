@@ -20,8 +20,8 @@ const tt = i18n.global.t
 export interface QueryTab {
   id: string
   title: string
-  /** 页签类型：query=查询编辑器，table=表查看面板，object=对象定义查看，routine=例程编辑器，session=会话管理 */
-  type: 'query' | 'table' | 'object' | 'routine' | 'session'
+  /** 页签类型：query=查询编辑器，table=表查看面板，object=对象定义查看，routine=例程编辑器，session=会话管理，chat=AI 对话 */
+  type: 'query' | 'table' | 'object' | 'routine' | 'session' | 'chat'
   connectionId: string
   connectionName: string
   kind: DbKind
@@ -104,7 +104,7 @@ export const useTabsStore = defineStore('tabs', () => {
     /** 页签图标 key（默认 query） */
     icon?: string
     /** 页签类型（默认 query） */
-    type?: 'query' | 'table' | 'object' | 'routine' | 'session'
+    type?: 'query' | 'table' | 'object' | 'routine' | 'session' | 'chat'
     /** 表查看面板：目标表名 */
     table?: string
     /** 对象/例程面板：目标对象名 */

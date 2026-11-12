@@ -372,6 +372,7 @@ const menuItems = computed<CtxMenuItem[]>(() => {
     })
     push('tableMeta', t('tree.viewStructure'), Grid)
     push('tableSource', t('tree.viewSource'), Document)
+    push('aiGenQuery', t('tree.aiGenQuery'), objectIcon('act_ai'))
     sep()
     push('export', t('tree.exportData'), Download)
   } else if (tgt.nodeType === 'db') {
@@ -440,6 +441,9 @@ function onMenuSelect(key: string): void {
       break
     case 'tableSource':
       onMenuTableSource()
+      break
+    case 'aiGenQuery':
+      void onMenuAiGenQuery()
       break
     case 'genDdl':
       void onMenuGenDdl()
@@ -1135,6 +1139,27 @@ async function onMenuNewQuery(): Promise<void> {
           ? target.database
           : '',
   })
+}
+
+/** 树右键「AI 生成查询」：新建查询 + 直接打开 AI 侧栏（NL2SQL 预选该表） */
+async function onMenuAiGenQuery(): Promise<void> {
+  const target = menu.target
+  hideMenu()
+  if (!target || target.nodeType !== 'table') return
+  const cfg = connStore.configOf(target.connectionId)
+  if (!cfg) return
+  try {
+    await connStore.openConnection(cfg)
+  } catch (e) {
+    ElMessage.error(t('common.connectionFailed', { msg: describeConnError(e) }))
+    return
+  }
+  const tab = tabsStore.openTab({
+    connectionId: cfg.id,
+    connectionName: cfg.name,
+    kind: cfg.kind,
+  })
+  dispatchCommand('ai-gen-query', tab.id, undefined, target.label)
 }
 
 function onMenuEdit(): void {

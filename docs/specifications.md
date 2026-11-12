@@ -861,6 +861,17 @@
 - **命令**：`sql_templates_spec` / `sql_templates_overrides` / `sql_templates_save`；`sqltemplates.json` 已列入受保护存储文件（`is_storage_guarded_file`）。
 - **落点**：`db/templates.rs`、各 `db/dialect/*.rs` 与 `db/{mysql,postgres,gaussdb,sqlite,oracle}.rs`（`builtin_sql` 常量模块 + resolve 接线）、`utils/sqlTemplates.ts`、`stores/sqlTemplates.ts`、`SettingsDialog.vue`。
 
+## SPEC-AI-1 AI 能力（OpenAI 兼容流式接入）
+
+- **架构**：后端哑管道 `src-tauri/src/ai/{mod,client}.rs`（reqwest rustls + 手写 SSE 增量解析，无 eventsource 依赖）；Prompt 组装、schema 上下文压缩（8KB 截断打标）、预设模板全在前端（`utils/aiPrompt.ts` / `aiPresets.ts`）。命令面仅 3 个：`ai_chat_stream`（`tauri::ipc::Channel` 逐 token 推送）/ `ai_cancel`（abort 任务）/ `ai_test_connection`。
+- **密钥红线**：明文密钥不落盘不过 IPC——keyring `ai:<providerId>` 复用 `secrets.rs` 通用 API，配置 JSON 只存 `passwordRef`；`resolve_key` 对引用无值报可操作错误；日志禁止打印密钥。
+- **前端运行态**：`stores/ai.ts` 流式事件按 reqId 过期丢弃（runSeq 同款语义）；停止 = `aiCancel` 作废 + 事件守卫双保险；配置存 localStorage `personaldb.ai`（不含密钥），改动即时生效。
+- **入口约定**：查询侧栏 `AiSidebar`（按页签开关，Ctrl+I / 命令面板 / 错误条「AI 诊断」预填）/ 树右键「AI 生成查询」（NL2SQL 预选来源表，命令经 `app-command` 的 `data` 载荷传递）/ 结果区「AI 数据洞察」（采样前 50 行）/ AI 对话 Tab `ChatPane`（多轮 + localStorage 持久化 `personaldb.ai.chat`，上限 200 条；`QueryTab.type='chat'`，Tab 形式禁抽屉）。
+- **隐私红线**：schema 上下文注入默认开（仅表结构，不外发数据行，可关）；**数据洞察默认关**（`insightEnabled`，发送采样数据行须显式开启，侧栏 send 双重门控）。
+- **安全边界**：SQL 模板安全红线不适用 AI 产出——AI 生成的 SQL 一律经用户手动插入/替换编辑器后自行执行，应用不自动执行 AI 产出。
+- **提示词**：系统提示词走 i18n（`ai.prompt*`，随语言热切换）；NL2SQL/优化产出后处理 `stripSqlFences` 剥代码围栏；`{'@'}` 转义等 i18n 约定同全局。
+- **落点**：`src-tauri/src/ai/`、`Cargo.toml`（reqwest rustls）、`lib.rs`（3 命令注册）、`src/api/ai.ts`、`src/stores/ai.ts`、`src/types/ai.ts`、`src/utils/{aiPrompt,aiPresets}.ts`、`src/components/{AiSidebar,AiSettingsPane,ChatPane}.vue`、`SettingsDialog.vue`（ai 分类）、`ConnectionTree.vue`（aiGenQuery）、`QueryTabPane.vue`（侧栏挂载/诊断/洞察入口）、`workbench/TabArea.vue`（chat 分派）。
+
 ## 备注
 
 - 编辑器依赖：CodeMirror 6（`codemirror`、`@codemirror/lang-sql`、`@codemirror/theme-one-dark`）。

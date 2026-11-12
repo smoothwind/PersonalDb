@@ -170,6 +170,37 @@ export const useAiStore = defineStore('ai', () => {
     return !!sidebarOpen[tabId]
   }
 
+  // ================= 多轮对话（ChatPane；localStorage 持久化） =================
+
+  const CHAT_KEY = 'personaldb.ai.chat'
+  const CHAT_MAX_MSGS = 200
+
+  function loadChat(): AiMsg[] {
+    try {
+      const raw = localStorage.getItem(CHAT_KEY)
+      return raw ? (JSON.parse(raw) as AiMsg[]) : []
+    } catch {
+      return []
+    }
+  }
+
+  const chatMsgs = reactive<AiMsg[]>(loadChat())
+
+  function persistChat(): void {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(chatMsgs.slice(-CHAT_MAX_MSGS)))
+  }
+
+  function pushChat(msg: AiMsg): void {
+    chatMsgs.push(msg)
+    if (chatMsgs.length > CHAT_MAX_MSGS) chatMsgs.splice(0, chatMsgs.length - CHAT_MAX_MSGS)
+    persistChat()
+  }
+
+  function clearChat(): void {
+    chatMsgs.splice(0, chatMsgs.length)
+    persistChat()
+  }
+
   return {
     prefs,
     active,
@@ -185,5 +216,8 @@ export const useAiStore = defineStore('ai', () => {
     toggleSidebar,
     setSidebar,
     sidebarOf,
+    chatMsgs,
+    pushChat,
+    clearChat,
   }
 })

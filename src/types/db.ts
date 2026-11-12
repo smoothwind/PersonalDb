@@ -59,7 +59,7 @@ export interface ConnectionGroup {
 
 /** 页签快照（工作区持久化用，不含结果集） */
 export interface TabSnapshot {
-  type: 'query' | 'table' | 'object' | 'routine' | 'session'
+  type: 'query' | 'table' | 'object' | 'routine' | 'session' | 'chat'
   title: string
   connectionId: string
   connectionName: string

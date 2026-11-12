@@ -131,6 +131,7 @@ const TableInspectorPane = defineAsyncComponent(() => import('../TableInspectorP
 const ObjectInspector = defineAsyncComponent(() => import('../ObjectInspector.vue'))
 const RoutineEditor = defineAsyncComponent(() => import('../RoutineEditor.vue'))
 const SessionPane = defineAsyncComponent(() => import('../SessionPane.vue'))
+const ChatPane = defineAsyncComponent(() => import('../ChatPane.vue'))
 
 function paneComp(tab: QueryTab | null) {
   if (!tab) return QueryTabPane
@@ -138,6 +139,7 @@ function paneComp(tab: QueryTab | null) {
   if (tab.type === 'object') return ObjectInspector
   if (tab.type === 'routine') return RoutineEditor
   if (tab.type === 'session') return SessionPane
+  if (tab.type === 'chat') return ChatPane
   return QueryTabPane
 }
 

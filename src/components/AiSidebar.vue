@@ -113,6 +113,7 @@ import { copyText } from '../utils/clipboard'
 import {
   buildDiagnose,
   buildExplain,
+  buildInsight,
   buildNl2sql,
   buildOptimize,
   compressSchema,
@@ -124,7 +125,7 @@ import type { QueryTab } from '../stores/tabs'
 import type { AiMode } from '../types/ai'
 import type { SchemaSnapshot } from '../types/db'
 
-const MODES: AiMode[] = ['nl2sql', 'explain', 'optimize', 'diagnose']
+const MODES: AiMode[] = ['nl2sql', 'explain', 'optimize', 'diagnose', 'insight']
 
 const props = defineProps<{
   /** 所属查询页签（连接/库/方言上下文） */
@@ -135,6 +136,10 @@ const props = defineProps<{
   mode?: AiMode | null
   /** 外部预设输入（错误摘要等） */
   presetText?: string | null
+  /** 外部预选表（树右键「AI 生成查询」） */
+  presetTables?: string[] | null
+  /** 数据洞察采样（结果集入口传入；insight 模式的分析对象） */
+  presetSample?: { columns: string[]; rows: unknown[] } | null
 }>()
 
 const emit = defineEmits<{
@@ -165,7 +170,9 @@ const inputPlaceholder = computed(() =>
     ? t('ai.phNl2sql')
     : mode.value === 'diagnose'
       ? t('ai.phDiagnose')
-      : t('ai.phGeneric'),
+      : mode.value === 'insight'
+        ? t('ai.phInsight')
+        : t('ai.phGeneric'),
 )
 
 const tableOptions = computed(() =>
@@ -194,6 +201,7 @@ async function loadSnapshot(): Promise<void> {
 onMounted(() => {
   if (props.mode) mode.value = props.mode
   if (props.presetText) input.value = props.presetText
+  if (props.presetTables?.length) pickedTables.value = [...props.presetTables]
   void loadSnapshot()
 })
 
@@ -202,16 +210,17 @@ watch(
   () => void loadSnapshot(),
 )
 
-// 外部入口（错误条等）切换模式/预填
+// 外部入口（错误条/树右键等）切换模式/预填
 watch(
-  () => [props.mode, props.presetText] as const,
-  ([m, text]) => {
+  () => [props.mode, props.presetText, props.presetTables] as const,
+  ([m, text, tables]) => {
     if (m) mode.value = m
     if (text != null) {
       input.value = text
       output.value = ''
       errorMsg.value = ''
     }
+    if (tables != null) pickedTables.value = [...tables]
   },
 )
 
@@ -243,6 +252,14 @@ function buildMessages() {
       return buildOptimize(kind, props.getSelection() || props.tab.sql)
     case 'diagnose':
       return buildDiagnose(kind, input.value.trim(), props.tab.error || input.value.trim())
+    case 'insight': {
+      // 数据洞察：隐私红线——入口已门控 insightEnabled；补充问题可选
+      const sample = props.presetSample ?? { columns: [], rows: [] }
+      const extra = input.value.trim()
+      const msgs = buildInsight(kind, sample.columns, sample.rows)
+      if (extra) msgs.push({ role: 'user', content: extra })
+      return msgs
+    }
     default:
       return []
   }
@@ -250,6 +267,11 @@ function buildMessages() {
 
 function send(): void {
   if (!canSend.value) return
+  // 隐私门控：数据洞察外发采样需显式开启（设置 → AI 能力）
+  if (mode.value === 'insight' && !aiStore.prefs.insightEnabled) {
+    errorMsg.value = t('ai.insightBlocked')
+    return
+  }
   const messages = buildMessages()
   output.value = ''
   errorMsg.value = ''

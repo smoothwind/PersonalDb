@@ -133,6 +133,8 @@
         :get-selection="getEditorSelection"
         :mode="aiMode"
         :preset-text="aiPresetText"
+        :preset-tables="aiPresetTables"
+        :preset-sample="aiPresetSample"
         @close="aiStore.setSidebar(tab.id, false)"
         @insert="aiInsert"
         @replace="aiReplace"
@@ -244,6 +246,16 @@
                 :title="t('result.summary')"
                 @click="showSummary = !showSummary"
               />
+              <!-- 数据洞察（隐私门控：insightEnabled；采样前 50 行外发） -->
+              <el-button
+                v-if="tab.result && tab.result.columns.length > 0"
+                size="small"
+                circle
+                :title="t('ai.insightTitle')"
+                @click="openAiInsight"
+              >
+                <el-icon><component :is="objectIcon('act_ai')" /></el-icon>
+              </el-button>
               <!-- 编辑开关 -->
               <el-button
                 v-if="tab.result && tab.result.columns.length > 0"
@@ -887,6 +899,26 @@ const AiSidebar = defineAsyncComponent(() => import('./AiSidebar.vue'))
 /** 外部入口（错误条等）预设的模式/输入；null = 不干预侧栏默认态 */
 const aiMode = ref<AiMode | null>(null)
 const aiPresetText = ref<string | null>(null)
+/** 外部入口（树右键 AI 生成查询）预选的表 */
+const aiPresetTables = ref<string[] | null>(null)
+/** 数据洞察采样（结果集前 50 行；隐私门控 insightEnabled） */
+const aiPresetSample = ref<{ columns: string[]; rows: unknown[] } | null>(null)
+
+/** 结果区「AI 数据洞察」：开侧栏 insight 模式 + 采样载荷 */
+function openAiInsight(): void {
+  const res = props.tab.result
+  if (!res || !res.columns.length) return
+  if (!aiStore.prefs.insightEnabled) {
+    ElMessage.info(t('ai.insightBlocked'))
+    return
+  }
+  aiPresetSample.value = {
+    columns: res.columns.map((c) => c.name),
+    rows: res.rows.slice(0, 50).map((r) => [...r]),
+  }
+  aiMode.value = 'insight'
+  aiStore.setSidebar(props.tab.id, true)
+}
 
 /** 错误条「AI 诊断」：开侧栏 + 预置诊断模式与错误摘要 */
 function openAiDiagnose(): void {
@@ -1682,7 +1714,7 @@ const snippetMap = computed(() => snippetStore.mergedFor(props.tab.kind))
 let offCommand: (() => void) | null = null
 
 /** 菜单栏命令（仅响应指向当前 Tab 的命令） */
-function handleAppCommand(payload: { cmd: string; tabId?: string }): void {
+function handleAppCommand(payload: { cmd: string; tabId?: string; data?: string }): void {
   if (payload.tabId && payload.tabId !== props.tab.id) return
   switch (payload.cmd) {
     case 'format':
@@ -1709,6 +1741,13 @@ function handleAppCommand(payload: { cmd: string; tabId?: string }): void {
     case 'snippets':
       snippetSettingsVisible.value = true
       break
+    case 'ai-gen-query': {
+      // 树右键「AI 生成查询」：开侧栏 + NL2SQL 预选来源表
+      aiStore.setSidebar(props.tab.id, true)
+      aiMode.value = 'nl2sql'
+      aiPresetTables.value = payload.data ? [payload.data] : null
+      break
+    }
   }
 }
 

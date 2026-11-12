@@ -8,13 +8,15 @@ export interface AppCommandPayload {
   tabId?: string
   /** 目标设置分类（open-settings 命令用） */
   section?: string
+  /** 命令数据（ai-gen-query 传表名等） */
+  data?: string
 }
 
 const EVENT_NAME = 'app-command'
 
-export function dispatchCommand(cmd: string, tabId?: string, section?: string): void {
+export function dispatchCommand(cmd: string, tabId?: string, section?: string, data?: string): void {
   window.dispatchEvent(
-    new CustomEvent<AppCommandPayload>(EVENT_NAME, { detail: { cmd, tabId, section } }),
+    new CustomEvent<AppCommandPayload>(EVENT_NAME, { detail: { cmd, tabId, section, data } }),
   )
 }
 
