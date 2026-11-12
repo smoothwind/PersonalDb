@@ -110,6 +110,7 @@ import { reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AI_PRESETS, providerFromPreset } from '../utils/aiPresets'
+import { logger } from '../utils/logger'
 import { useAiStore } from '../stores/ai'
 import type { AiProviderCfg } from '../types/ai'
 
@@ -204,7 +205,9 @@ async function testForm(): Promise<void> {
     const reply = await aiStore.testConnection(draft)
     ElMessage.success(t('aiCfg.testOk', { reply: reply.slice(0, 60) }))
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : String(e))
+    const msg = e instanceof Error ? e.message : String(e)
+    logger.warn(`AI 测试连接失败（表单）: ${msg}`)
+    ElMessage.error(msg)
   } finally {
     testingInDlg.value = false
   }
@@ -218,7 +221,9 @@ async function testActive(): Promise<void> {
     const reply = await aiStore.testConnection(p)
     ElMessage.success(t('aiCfg.testOk', { reply: reply.slice(0, 60) }))
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : String(e))
+    const msg = e instanceof Error ? e.message : String(e)
+    logger.warn(`AI 测试连接失败（${p.name}）: ${msg}`)
+    ElMessage.error(msg)
   } finally {
     testing.value = false
   }

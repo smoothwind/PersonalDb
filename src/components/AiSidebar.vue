@@ -110,6 +110,7 @@ import { dbSchemaSnapshot } from '../api/db'
 import { dispatchCommand } from '../utils/commands'
 import { objectIcon } from '../utils/objectIcons'
 import { copyText } from '../utils/clipboard'
+import { logger } from '../utils/logger'
 import {
   buildDiagnose,
   buildExplain,
@@ -193,7 +194,7 @@ async function loadSnapshot(): Promise<void> {
   try {
     snapshot.value = await dbSchemaSnapshot(sessionId, props.tab.database || null)
   } catch (e) {
-    console.warn('AI 侧栏加载 schema 快照失败', e)
+    logger.warn(`AI 侧栏加载 schema 快照失败: ${e instanceof Error ? e.message : String(e)}`)
     snapshot.value = null
   }
 }
@@ -285,10 +286,12 @@ function send(): void {
       () => finalize(),
       (msg) => {
         errorMsg.value = msg
+        logger.warn(`AI 侧栏流失败 mode=${mode.value}: ${msg}`)
       },
     )
     .catch((e: unknown) => {
       errorMsg.value = e instanceof Error ? e.message : String(e)
+      logger.warn(`AI 侧栏调用异常 mode=${mode.value}: ${errorMsg.value}`)
     })
 }
 

@@ -38,9 +38,12 @@ fn resolve_key(key_ref: &Option<String>) -> DbResult<Option<String>> {
         None => Ok(None),
         Some(id) => match secrets::get(id) {
             Some(k) if !k.is_empty() => Ok(Some(k)),
-            _ => Err(AppError::General(format!(
-                "AI 密钥未配置（keyring 引用 {id} 无值）——请在设置 → AI 重新保存密钥"
-            ))),
+            _ => {
+                log::warn!(target: "ai", "AI 密钥未配置 keyRef={id}");
+                Err(AppError::General(format!(
+                    "AI 密钥未配置（keyring 引用 {id} 无值）——请在设置 → AI 重新保存密钥"
+                )))
+            }
         },
     }
 }
@@ -55,16 +58,39 @@ pub async fn ai_chat_stream(
 ) -> DbResult<()> {
     let api_key = resolve_key(&cfg.key_ref)?;
     let req_id_inner = req_id.clone();
+    let started = std::time::Instant::now();
     let handle = tokio::spawn(async move {
+        let outcome: &'static str;
         let result = client::stream_chat(&cfg, api_key, &messages, |delta| {
-            let _ = on_event.send(AiStreamEvent::Token { delta });
+            if on_event.send(AiStreamEvent::Token { delta }).is_err() {
+                // Channel 断开（页签关闭/窗口重载）：回调返回 false 让 client 终止流
+                log::warn!(target: "ai", "Channel 推送失败，终止流 req_id={req_id_inner}");
+                return false;
+            }
+            true
         })
         .await;
-        let event = match result {
-            Ok(finish) => AiStreamEvent::Done { finish },
-            Err(e) => AiStreamEvent::Error { message: e.to_string() },
-        };
-        let _ = on_event.send(event);
+        match &result {
+            Ok(finish) => {
+                outcome = "ok";
+                let _ = on_event.send(AiStreamEvent::Done { finish: finish.clone() });
+            }
+            Err(e) => {
+                outcome = "failed";
+                log::warn!(target: "ai", "AI 流失败 req_id={req_id_inner} 耗时={}ms: {e}",
+                    started.elapsed().as_millis());
+                let _ = on_event.send(AiStreamEvent::Error { message: e.to_string() });
+            }
+        }
+        // 成功调用也留痕：reqId/model/消息数/耗时/结束原因（不含 prompt 内容）
+        log::info!(
+            target: "ai",
+            "AI 流结束 req_id={req_id_inner} model={} msgs={} 耗时={}ms outcome={outcome} finish={:?}",
+            cfg.model,
+            messages.len(),
+            started.elapsed().as_millis(),
+            result.as_ref().ok().and_then(|f| f.clone()),
+        );
         tasks().lock().unwrap().remove(&req_id_inner);
     });
     tasks().lock().unwrap().insert(req_id, handle);
@@ -147,7 +173,10 @@ mod tests {
             &cfg,
             None,
             &[AiMessage { role: "user".into(), content: "hi".into() }],
-            |d| got.push_str(&d),
+            |d| {
+                got.push_str(&d);
+                true
+            },
         )
         .await
         .expect("stream_chat");

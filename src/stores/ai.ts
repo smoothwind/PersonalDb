@@ -12,6 +12,7 @@ import { defineStore } from 'pinia'
 import { i18n } from '../i18n'
 import { aiCancel, aiChatStream, aiTestConnection, type AiCallCfg } from '../api/ai'
 import { secretDelete, secretStore } from '../api/db'
+import { logger } from '../utils/logger'
 import type { AiMsg, AiPrefs, AiProviderCfg } from '../types/ai'
 
 const AI_KEY = 'personaldb.ai'
@@ -133,13 +134,16 @@ export const useAiStore = defineStore('ai', () => {
           onDone(e.finish)
         } else {
           running.value = false
+          logger.warn(`AI 流失败 reqId=${reqId}: ${e.message}`)
           onError(e.message)
         }
       })
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
       if (reqId === currentReqId) {
         running.value = false
-        onError(e instanceof Error ? e.message : String(e))
+        logger.warn(`AI 调用异常 reqId=${reqId}: ${msg}`)
+        onError(msg)
       }
     } finally {
       if (reqId === currentReqId) running.value = false
@@ -151,7 +155,10 @@ export const useAiStore = defineStore('ai', () => {
     const id = currentReqId
     currentReqId = ''
     running.value = false
-    if (id) void aiCancel(id)
+    if (id) {
+      logger.debug(`AI 流取消 reqId=${id}`)
+      void aiCancel(id)
+    }
   }
 
   // ================= 侧栏开关（按查询页签） =================

@@ -134,16 +134,27 @@ pub fn extract_delta(data: &str) -> (Option<String>, Option<String>) {
     (delta, finish)
 }
 
+/// baseURL → host（日志用；不带路径与密钥）
+fn host_of(base_url: &str) -> String {
+    base_url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split(['/']).next())
+        .unwrap_or(base_url)
+        .to_string()
+}
+
 // =============================================================================
 // 流式对话
 // =============================================================================
 
 /// 流式对话：逐 token 回调，返回 finish_reason（服务端正常结束 = Some）。
+/// 回调返回 false = 下游 Channel 已断（前端页签关闭），立即终止流。
 pub async fn stream_chat(
     cfg: &AiCallConfig,
     api_key: Option<String>,
     messages: &[AiMessage],
-    mut on_token: impl FnMut(String),
+    mut on_token: impl FnMut(String) -> bool,
 ) -> DbResult<Option<String>> {
     let timeout = cfg.timeout_secs.unwrap_or(180).clamp(5, 600);
     let client = http_client(timeout)?;
@@ -166,17 +177,32 @@ pub async fn stream_chat(
         req = req.header(h.0, h.1);
     }
     let resp = req.send().await.map_err(|e| {
-        if e.is_timeout() {
-            AppError::General("AI 请求超时——网络不通或提供方无响应（可在设置调大超时）".into())
+        // 日志红线：不落密钥与消息内容，仅 host/model/错误摘要
+        let (msg, with_detail): (&str, bool) = if e.is_timeout() {
+            (
+                "AI 请求超时——网络不通或提供方无响应（可在设置调大超时）",
+                false,
+            )
         } else if e.is_connect() {
-            AppError::General("AI 端点连接失败——检查 baseURL/网络/代理".into())
+            ("AI 端点连接失败——检查 baseURL/网络/代理", false)
         } else {
-            AppError::General(format!("AI 请求失败: {e}"))
-        }
+            ("AI 请求失败", true)
+        };
+        log::warn!(
+            target: "ai",
+            "stream 请求失败 host={} model={} msgs={}: {msg}{}",
+            host_of(&cfg.base_url),
+            cfg.model,
+            messages.len(),
+            if with_detail { format!(" ({e})") } else { String::new() },
+        );
+        AppError::General(if with_detail { format!("{msg}: {e}") } else { msg.to_string() })
     })?;
     let status = resp.status().as_u16();
     if status >= 400 {
         let text = resp.text().await.unwrap_or_default();
+        log::warn!(target: "ai", "stream HTTP {status} host={} model={}: {}",
+            host_of(&cfg.base_url), cfg.model, error_summary(&text));
         return Err(status_error(status, &text));
     }
 
@@ -186,7 +212,11 @@ pub async fn stream_chat(
     loop {
         let chunk = match stream.next().await {
             Some(Ok(b)) => b,
-            Some(Err(e)) => return Err(AppError::General(format!("AI 流读取中断: {e}"))),
+            Some(Err(e)) => {
+                log::warn!(target: "ai", "流读取中断 host={} model={}: {e}",
+                    host_of(&cfg.base_url), cfg.model);
+                return Err(AppError::General(format!("AI 流读取中断: {e}")));
+            }
             None => break,
         };
         for data in parser.feed(&chunk) {
@@ -198,8 +228,11 @@ pub async fn stream_chat(
                 finish = Some(fr);
             }
             if let Some(d) = delta {
-                if !d.is_empty() {
-                    on_token(d);
+                if !d.is_empty() && !on_token(d) {
+                    // 下游 Channel 已断（页签关闭/重载）：终止流，避免白打 API
+                    log::info!(target: "ai", "下游断开，终止流 host={} model={}",
+                        host_of(&cfg.base_url), cfg.model);
+                    return Ok(finish);
                 }
             }
         }
@@ -227,17 +260,23 @@ pub async fn test_connection(cfg: &AiCallConfig, api_key: Option<String>) -> DbR
     if let Some(h) = auth_header(&api_key) {
         req = req.header(h.0, h.1);
     }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| AppError::General(format!("AI 端点不可达: {e}")))?;
+    let resp = req.send().await.map_err(|e| {
+        log::warn!(target: "ai", "测试连接不可达 host={} model={}: {e}",
+            host_of(&cfg.base_url), cfg.model);
+        AppError::General(format!("AI 端点不可达: {e}"))
+    })?;
     let status = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
     if status >= 400 {
+        log::warn!(target: "ai", "测试连接 HTTP {status} host={} model={}: {}",
+            host_of(&cfg.base_url), cfg.model, error_summary(&text));
         return Err(status_error(status, &text));
     }
-    let v: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|_| AppError::General("AI 响应非 JSON——baseURL 可能不是 OpenAI 兼容端点".into()))?;
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
+        log::warn!(target: "ai", "测试连接响应非 JSON host={} model={}",
+            host_of(&cfg.base_url), cfg.model);
+        AppError::General("AI 响应非 JSON——baseURL 可能不是 OpenAI 兼容端点".into())
+    })?;
     let reply = v["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or("")

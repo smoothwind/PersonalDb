@@ -70,6 +70,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { dispatchCommand } from '../utils/commands'
 import { objectIcon } from '../utils/objectIcons'
 import { buildChat } from '../utils/aiPrompt'
+import { logger } from '../utils/logger'
 import { useAiStore } from '../stores/ai'
 import type { QueryTab } from '../stores/tabs'
 
@@ -119,11 +120,13 @@ function send(): void {
       },
       (msg) => {
         errorMsg.value = msg
+        logger.warn(`AI 对话流失败: ${msg}`)
         streamingText.value = ''
       },
     )
     .catch((e: unknown) => {
       errorMsg.value = e instanceof Error ? e.message : String(e)
+      logger.warn(`AI 对话调用异常: ${errorMsg.value}`)
     })
 }
 
