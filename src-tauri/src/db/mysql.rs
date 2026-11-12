@@ -512,7 +512,7 @@ pub(crate) mod builtin_sql {
          ORDER BY index_name, seq_in_index";
     pub const ROUTINES: &str = "SELECT parameter_mode, parameter_name, dtd_identifier \
          FROM information_schema.parameters \
-         WHERE specific_schema = ? AND specific_name = ? \
+         WHERE specific_schema = ? AND specific_name = ? AND parameter_name IS NOT NULL \
          ORDER BY ordinal_position";
     pub const ROUTINE_RETURN: &str = "SELECT COALESCE(dtd_identifier, data_type) FROM information_schema.routines \
          WHERE routine_schema = ? AND specific_name = ? AND routine_type = 'FUNCTION'";
